@@ -96,3 +96,46 @@ jobs:
       - name: Remove ephemeral test containers and volumes
         if: always()
         run: docker compose down --volumes --remove-orphans
+  ibkr-mock-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      POSTGRES_PASSWORD: mock-db-only-password
+      APP_TOKEN: mock-app-only-token
+      IBKR_GATEWAY_URL: http://host.docker.internal:5055
+      IBKR_CONIDS_JSON: '{"AC.PA":1001,"SPY":1002}'
+      TEST_BASE_URL: http://127.0.0.1:3010
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Start isolated local read-only IBKR mock
+        run: |
+          node tests/mock-ibkr-gateway.mjs > /tmp/ibkr-mock.log 2>&1 &
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:5055/v1/api/iserver/auth/status >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/ibkr-mock.log
+          exit 1
+      - name: Boot app with mock gateway and clean PostgreSQL
+        run: docker compose up -d --wait
+      - name: Wait for app
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3010/ >/dev/null; then exit 0; fi
+            sleep 4
+          done
+          docker compose logs --tail=100
+          exit 1
+      - name: Test IBKR history-to-PostgreSQL pipeline
+        run: node tests/mock-ibkr-e2e.mjs
+      - name: Diagnostic logs on failure
+        if: failure()
+        run: |
+          cat /tmp/ibkr-mock.log
+          docker compose logs --tail=150
+      - name: Remove ephemeral test containers
+        if: always()
+        run: docker compose down --volumes --remove-orphans
