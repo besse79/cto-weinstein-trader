@@ -76,3 +76,14 @@ La base est initialisée lors de la première création du volume PostgreSQL. Ne
 - Les historiques refusent les bougies futures, incohérentes, dupliquées et les volumes invalides.
 - Le job GitHub `ibkr-mock-e2e` vérifie le parcours complet gateway HTTP simulée → Next.js → PostgreSQL → scanner. Cette simulation **ne prouve pas** le bon fonctionnement des droits de marché ou de la session IBKR réelle.
 - L'authentification réelle et les abonnements de données sont à confirmer localement, sans communiquer de secrets dans le dépôt.
+
+
+## Contrôle IBKR dans la page « Trades du matin »
+- Dans l'application locale : renseigner **APP_TOKEN local** dans le champ « Jeton local », puis cliquer sur « Tester la connexion IBKR ».
+- L'API interroge `POST /v1/api/iserver/auth/status` conformément à la documentation actuelle d'IBKR.
+- La recherche de contrats (`GET /v1/api/iserver/secdef/search?symbol=...`) renvoie des **candidats non validés** : vérifier le titre, la place de cotation, la devise et le type d'instrument avant toute association à un conid. Aucune affectation automatique.
+- Une fois les vrais conids validés, configurer `IBKR_CONIDS_JSON` **uniquement dans `.env` local**, jamais sur GitHub, puis redémarrer les conteneurs.
+- Le bouton « Importer l'historique vérifié » n'est actif que si le diagnostic d'authentification réussit. L'API refuse les instruments absents de la liste autorisée.
+- IBKR Client Portal Gateway doit être installé et authentifié localement et son certificat TLS doit être approuvé. Un abonnement market data peut être nécessaire.
+- Le statut « NO_DATA » signifie qu'aucun historique n'a été importé ; « STALE_DATA » correspond à un cours importé mais périmé.
+- Pour mettre à jour l'installation WSL sans écraser la base : `cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py`. Le script vérifie la sauvegarde avant redémarrage.
