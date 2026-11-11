@@ -2,6 +2,7 @@ import {NextRequest} from 'next/server';
 import {authorized} from '../../../../lib/auth';
 import {gatewayBase} from '../../../../lib/ibkr-readonly.mjs';
 import {pool} from '../../../../lib/db';
+import {gatewayStatus} from '../../../../lib/ibkr';
 export const dynamic='force-dynamic';
 
 /** Search candidates without saving conids or touching IBKR orders. */
@@ -9,6 +10,8 @@ export async function GET(req:NextRequest){
  if(!authorized(req))return Response.json({error:'Unauthorized'},{status:401});
  const base=gatewayBase(process.env.IBKR_GATEWAY_URL);
  if(!base)return Response.json({error:'Local IBKR gateway not configured'},{status:503});
+ const session=await gatewayStatus();
+ if(!session.connected)return Response.json({error:'IBKR brokerage session not authenticated'},{status:503});
  const appSymbol=req.nextUrl.searchParams.get('symbol')||'';
  if(!/^[A-Z0-9.\-]{1,15}$/.test(appSymbol))
   return Response.json({error:'Invalid instrument'},{status:400});
