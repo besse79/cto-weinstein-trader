@@ -66,3 +66,13 @@ La base est initialisée lors de la première création du volume PostgreSQL. Ne
 - Activation volontaire seulement après la validation réelle de la gateway locale IBKR, de ses droits de données et du mapping réel de tous les symboles : `docker compose --profile automation up -d`, avec `PAPER_AUTOMATION_ENABLED=true` et `IBKR_SYNC_SYMBOLS` définis dans `.env`.
 - **Attention** : les données de marché réelles, les éventuels jours fériés, les divergences de cotation et l'import IBKR n'ont pas été validés sur un compte utilisateur. Ne pas activer ce service avant ces validations. Aucun ordre de courtier n'est envoyé.
 - La tâche n'est pas garantie pendant les arrêts du conteneur ; un déclenchement manqué n'est pas rattrapé automatiquement.
+
+
+## Validation de la passerelle IBKR (11/11/2026)
+- L'URL de base Client Portal Gateway est normalisée en `/v1/api`, selon la documentation officielle IBKR.
+- Configuration attendue : `IBKR_GATEWAY_URL=https://host.docker.internal:5000` (si la gateway locale écoute sur ce port et que son certificat TLS est approuvé par le conteneur).
+- Les symboles doivent être associés à des `conid` IBKR authentiques dans `IBKR_CONIDS_JSON`, **jamais** à un identifiant inventé.
+- Le connecteur ne contacte que le statut d'authentification et `GET /iserver/marketdata/history`. Les routes de transmission d'ordres IBKR ne sont pas utilisées.
+- Les historiques refusent les bougies futures, incohérentes, dupliquées et les volumes invalides.
+- Le job GitHub `ibkr-mock-e2e` vérifie le parcours complet gateway HTTP simulée → Next.js → PostgreSQL → scanner. Cette simulation **ne prouve pas** le bon fonctionnement des droits de marché ou de la session IBKR réelle.
+- L'authentification réelle et les abonnements de données sont à confirmer localement, sans communiquer de secrets dans le dépôt.
