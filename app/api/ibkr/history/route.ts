@@ -29,15 +29,6 @@ export async function POST(req:NextRequest){
   if(!Array.isArray(json.data)||json.data.length<1||json.data.length>1000)
    throw new Error('Unexpected IBKR historical data');
   const bars=parseIbkrHistory(json); /* validated, sorted and duplicate-free OHLCV */
-  /* OLD_BARS_START const unused=json.data.map((x:Record<string,number>)=>{
-   const t=Number(x.t),open=Number(x.o),high=Number(x.h),low=Number(x.l),close=Number(x.c),volume=Number(x.v);
-   const day=new Date(t).toISOString().slice(0,10);
-   if(!Number.isFinite(t)||!Number.isFinite(Date.parse(day))||
-    ![open,high,low,close].every(n=>Number.isFinite(n)&&n>0)||high<Math.max(open,close,low)||low>Math.min(open,close)||
-    !Number.isSafeInteger(volume)||volume<0)throw new Error('Invalid IBKR OHLCV');
-   return {day,open,high,low,close,volume};
-  });
-  OLD_BARS_END */
   const db=await pool.connect();let begun=false;
   try{
    await db.query('BEGIN');begun=true;
