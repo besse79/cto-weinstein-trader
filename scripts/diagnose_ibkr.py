@@ -1,81 +1,86 @@
 #!/usr/bin/env python3
-"""Read-only diagnostics for CTO Weinstein and local IBKR Client Portal Gateway.
-No credentials are requested or printed. No network access except localhost.
+"""Safe WSL diagnostic. Queries only the local CTO web API.
+Never prints APP_TOKEN, credentials, conids or account identifiers.
+No configuration changes and no broker orders.
 """
 import json
-import os
 from pathlib import Path
-import socket
-import ssl
 import sys
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
 
-HOME=Path.home()
-ROOT=Path(__file__).resolve().parent
-def local_env():
-    file=ROOT/'.env'
-    values={}
-    if file.exists():
-        for line in file.read_text().splitlines():
-            if '=' in line and not line.lstrip().startswith('#'):
-                key,val=line.split('=',1)
-                values[key]=val.strip()
-    return values
-def check_http(url, method='GET'):
+ROOT = Path(__file__).resolve().parent.parent
+APP_URL = "http://127.0.0.1:3010"
+
+def environment():
+    result = {}
+    file = ROOT / ".env"
+    if not file.exists():
+        return result
+    for line in file.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        result[key.strip()] = value.strip()
+    return result
+
+def request(path, token=None):
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["x-app-token"] = token
+    req = Request(APP_URL + path, headers=headers)
     try:
-        with urlopen(Request(url,method=method),timeout=4) as response:
-            raw=response.read(200000)
-            try: return response.status,json.loads(raw)
-            except Exception: return response.status,None
-    except HTTPError as err: return err.code,None
-    except (URLError,TimeoutError,OSError) as err: return None,type(err).__name__
-def check_gateway(port):
-    try:
-        with socket.create_connection(('127.0.0.1',port),timeout=3):
-            return True
-    except OSError: return False
+        with urlopen(req, timeout=10) as response:
+            return response.status, json.load(response)
+    except HTTPError as err:
+        return err.code, {}
+    except (URLError, OSError, TimeoutError, ValueError):
+        return None, {}
+
 def main():
-    env=local_env()
-    print('CTO Weinstein — diagnostic local (sans secrets)')
-    app,body=check_http('http://127.0.0.1:3010/api/dashboard')
-    if app==200 and isinstance(body,dict) and body.get('mode')=='PAPER':
-        print('APPLICATION : OK · PAPER · capital initial',body.get('initial'),'EUR')
-    else:
-        print('APPLICATION : INDISPONIBLE OU NON PAPER')
-    print('AUTOMATISATION :', 'ACTIVE — à contrôler' if env.get('PAPER_AUTOMATION_ENABLED')=='true' else 'DÉSACTIVÉE')
-    url=env.get('IBKR_GATEWAY_URL','')
-    if not url:
-        print('IBKR : NON CONFIGURÉ — aucune gateway déclarée dans .env')
-        print('Documentation : https://www.interactivebrokers.com/campus/trading-lessons/launching-and-authenticating-the-gateway/')
-        return 0
-    from urllib.parse import urlparse
-    p=urlparse(url)
-    if p.hostname not in ('localhost','127.0.0.1','host.docker.internal') or p.scheme not in ('https','http'):
-        print('IBKR : URL REFUSÉE (gateway locale uniquement)')
+    print("=== CTO Weinstein Trader : diagnostic local, lecture seule ===")
+    env = environment()
+    status, dashboard = request("/api/dashboard")
+    if status != 200 or dashboard.get("mode") != "PAPER":
+        print("APPLICATION : INDISPONIBLE ou mode PAPER non confirmé")
+        print("Vérifier Docker Desktop et les conteneurs du projet CTO (port 3010).")
         return 1
-    port=p.port or (443 if p.scheme=='https' else 80)
-    print('IBKR : gateway configurée sur',p.hostname,'port',port,'; validation TLS requise')
-    if not check_gateway(port):
-        print('IBKR : aucun service détecté sur le port local',port)
+    print("APPLICATION : OK | Mode PAPER | Capital initial :",
+          dashboard.get("initial"), "EUR")
+    enabled = env.get("PAPER_AUTOMATION_ENABLED") == "true"
+    print("PLANIFICATEUR :", "ACTIVÉ — vérification nécessaire" if enabled else "DÉSACTIVÉ")
+    gateway = env.get("IBKR_GATEWAY_URL", "")
+    if not gateway:
+        print("GATEWAY IBKR : NON CONFIGURÉE (.env local)")
+        print("Étape suivante : installer Client Portal Gateway puis renseigner IBKR_GATEWAY_URL.")
         return 0
-    if p.scheme=='https':
-        try:
-            ctx=ssl.create_default_context()
-            with socket.create_connection(('127.0.0.1',port),timeout=4) as sock:
-                with ctx.wrap_socket(sock,server_hostname='localhost'):
-                    pass
-            print('IBKR : service joignable, certificat TLS approuvé')
-        except ssl.SSLError:
-            print('IBKR : service présent, mais certificat non approuvé (aucune désactivation TLS effectuée)')
-            return 0
-        except OSError:
-            print('IBKR : TLS inaccessible')
-            return 0
-    code,reply=check_http('http://127.0.0.1:3010/api/dashboard')
-    print('APPLICATION API :', 'OK' if code==200 and isinstance(reply,dict) and reply.get('mode')=='PAPER' else 'ANOMALIE')
-    print('Pour contrôler l’authentification IBKR, utiliser le panneau dans Trades du matin et votre jeton APP_TOKEN local.')
+
+    # Never print URL: it might contain credentials accidentally supplied by a user.
+    token = env.get("APP_TOKEN", "")
+    if not token:
+        print("APP_TOKEN : ABSENT dans .env local")
+        return 1
+    code, body = request("/api/ibkr", token)
+    if code == 401:
+        print("CONTRÔLE IBKR : jeton local rejeté (APP_TOKEN incohérent)")
+        return 1
+    if code != 200:
+        print("CONTRÔLE IBKR : API non disponible (code", code, ")")
+        return 1
+    ibkr = body.get("ibkr") or {}
+    if body.get("realOrdersEnabled") is not False:
+        print("CONTRÔLE DE SÉCURITÉ : ÉCHEC — indicateur realOrdersEnabled non désactivé")
+        return 1
+    if ibkr.get("connected") is True and ibkr.get("authenticated") is True:
+        print("SESSION IBKR : AUTHENTIFIÉE (diagnostic serveur)")
+        print("Étape suivante : résoudre et vérifier les contrats, puis importer l'historique.")
+    else:
+        print("SESSION IBKR : NON AUTHENTIFIÉE ou gateway inaccessible")
+        reason = str(ibkr.get("reason", "Authentification non établie"))
+        print("DIAGNOSTIC :", reason[:200])
+        print("Vérifier la gateway locale, son certificat TLS et la connexion navigateur.")
+    print("Aucun ordre réel ou fictif n'a été envoyé par ce diagnostic.")
     return 0
 
-if __name__=='__main__':
+if __name__ == "__main__":
     sys.exit(main())
