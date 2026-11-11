@@ -4,7 +4,7 @@ export async function gatewayStatus(){
  const base=gatewayBase(process.env.IBKR_GATEWAY_URL);
  if(!base)return {connected:false,reason:'Local IBKR gateway not configured'};
  try{
-  const r=await fetch(base+'/iserver/auth/status',{method:'GET',cache:'no-store',signal:AbortSignal.timeout(8000)});
+  const r=await fetch(base+'/iserver/auth/status',{method:'POST',cache:'no-store',signal:AbortSignal.timeout(8000)});
   if(!r.ok)return {connected:false,reason:'IBKR gateway HTTP '+r.status};
   const json=await r.json();
   return {connected:json.authenticated===true,authenticated:json.authenticated===true};
