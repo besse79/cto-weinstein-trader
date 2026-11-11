@@ -1,3 +1,4 @@
+import {gatewayBase,parseIbkrHistory} from '../../../../lib/ibkr-readonly.mjs';
 import {NextRequest} from 'next/server';
 import {authorized} from '../../../../lib/auth';
 import {pool} from '../../../../lib/db';
@@ -8,8 +9,8 @@ export const dynamic='force-dynamic';
  */
 export async function POST(req:NextRequest){
  if(!authorized(req))return Response.json({error:'Unauthorized'},{status:401});
- const gateway=process.env.IBKR_GATEWAY_URL||'';
- if(!/^https?:\/\/(localhost|127\.0\.0\.1|host\.docker\.internal)(:\d+)?$/.test(gateway))
+ const gateway=gatewayBase(process.env.IBKR_GATEWAY_URL);
+ if(!gateway)
   return Response.json({error:'Local IBKR gateway not configured'},{status:503});
  let body;try{body=await req.json()}catch{return Response.json({error:'Invalid JSON'},{status:400})}
  const symbol=String(body.symbol||'');
@@ -27,7 +28,8 @@ export async function POST(req:NextRequest){
   const json=await response.json();
   if(!Array.isArray(json.data)||json.data.length<1||json.data.length>1000)
    throw new Error('Unexpected IBKR historical data');
-  const bars=json.data.map((x:Record<string,number>)=>{
+  const bars=parseIbkrHistory(json); /* validated, sorted and duplicate-free OHLCV */
+  /* OLD_BARS_START const unused=json.data.map((x:Record<string,number>)=>{
    const t=Number(x.t),open=Number(x.o),high=Number(x.h),low=Number(x.l),close=Number(x.c),volume=Number(x.v);
    const day=new Date(t).toISOString().slice(0,10);
    if(!Number.isFinite(t)||!Number.isFinite(Date.parse(day))||
@@ -35,6 +37,7 @@ export async function POST(req:NextRequest){
     !Number.isSafeInteger(volume)||volume<0)throw new Error('Invalid IBKR OHLCV');
    return {day,open,high,low,close,volume};
   });
+  OLD_BARS_END */
   const db=await pool.connect();let begun=false;
   try{
    await db.query('BEGIN');begun=true;
