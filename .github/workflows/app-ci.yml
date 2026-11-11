@@ -139,3 +139,39 @@ jobs:
       - name: Remove ephemeral test containers
         if: always()
         run: docker compose down --volumes --remove-orphans
+  wsl-installer-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Python syntax
+        run: python3 -m py_compile deploy_local.py restore.py
+      - name: Check host prerequisites without changing state
+        run: python3 deploy_local.py --check
+      - name: Start CTO application with local installer
+        run: python3 deploy_local.py
+      - name: Verify paper dashboard
+        run: |
+          curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
+      - name: Run installer again to produce verified PostgreSQL backup
+        run: python3 deploy_local.py
+      - name: Verify rollback archive without modifying database
+        run: |
+          latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
+          python3 restore.py "$latest"
+          test -s "$latest/postgres.dump"
+      - name: Test explicit rollback on isolated CI database
+        run: |
+          latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
+          printf 'RESTORE\n' | python3 restore.py "$latest" --apply
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500'; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Diagnose installer failure
+        if: failure()
+        run: docker compose -p cto_weinstein logs --tail=120
+      - name: Remove temporary CTO test containers
+        if: always()
+        run: docker compose -p cto_weinstein down --volumes --remove-orphans
