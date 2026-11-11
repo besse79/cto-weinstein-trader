@@ -52,3 +52,35 @@ jobs:
           psql -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 4
       - name: Verify schema initialization is idempotent
         run: psql -v ON_ERROR_STOP=1 -f sql/init.sql
+  docker-paper-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      POSTGRES_PASSWORD: integration-only-local-password
+      APP_TOKEN: integration-only-local-token-never-used-outside-ci
+      TEST_BASE_URL: http://127.0.0.1:3010
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Docker Compose
+        run: docker compose config --quiet
+      - name: Launch PostgreSQL and web application
+        run: docker compose up -d --wait
+      - name: Wait for HTTP readiness
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3010/ >/dev/null; then exit 0; fi
+            sleep 4
+          done
+          echo "Web application never became ready" >&2
+          exit 1
+      - name: Simulate paper buying and selling
+        run: node tests/integration-smoke.mjs
+      - name: Diagnose failure
+        if: failure()
+        run: docker compose logs --tail=150
+      - name: Remove ephemeral test containers and volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans
