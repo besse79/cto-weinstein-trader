@@ -17,6 +17,10 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund
       - run: npm test
+      - name: Confirm scheduler is disabled by default
+        run: node scripts/run-paper-cycle.mjs
+        env:
+          PAPER_AUTOMATION_ENABLED: 'false'
       - run: npm run typecheck
       - run: npm run build
         env:
