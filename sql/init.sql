@@ -29,5 +29,5 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
 INSERT INTO settings(key,value) VALUES ('initial_cash','500'),('account_type','CTO'),('paper_only','true') ON CONFLICT DO NOTHING;
 INSERT INTO instruments(symbol,name,currency) VALUES
  ('AC.PA','Accor','EUR'),('SU.PA','Schneider Electric','EUR'),
- ('LR.PA','Legrand','EUR'),('SAF.PA','Safran','EUR')
+ ('LR.PA','Legrand','EUR'),('SAF.PA','Safran','EUR'),('SPY','S&P 500 Benchmark ETF','USD')
  ON CONFLICT DO NOTHING;
