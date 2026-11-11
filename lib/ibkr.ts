@@ -1,12 +1,12 @@
-// Informational connection status only. No broker trading endpoints.
-const configured=process.env.IBKR_GATEWAY_URL||'';
+import {gatewayBase} from './ibkr-readonly.mjs';
+// Status check only. No order, account mutation, or trade endpoints.
 export async function gatewayStatus(){
- if(!/^https?:\/\/(localhost|127\.0\.0\.1|host\.docker\.internal)(:\d+)?$/.test(configured))
-  return {connected:false,reason:'Local IBKR gateway not configured'};
+ const base=gatewayBase(process.env.IBKR_GATEWAY_URL);
+ if(!base)return {connected:false,reason:'Local IBKR gateway not configured'};
  try{
-  const r=await fetch(configured+'/iserver/auth/status',{method:'GET',cache:'no-store',signal:AbortSignal.timeout(8000)});
+  const r=await fetch(base+'/iserver/auth/status',{method:'GET',cache:'no-store',signal:AbortSignal.timeout(8000)});
   if(!r.ok)return {connected:false,reason:'IBKR gateway HTTP '+r.status};
   const json=await r.json();
-  return {connected:!!json.authenticated,authenticated:!!json.authenticated};
- }catch(e){return {connected:false,reason:String(e)}}
+  return {connected:json.authenticated===true,authenticated:json.authenticated===true};
+ }catch{return {connected:false,reason:'Local gateway unreachable or TLS validation failed'}}
 }
