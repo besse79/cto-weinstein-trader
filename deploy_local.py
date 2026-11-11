@@ -65,7 +65,7 @@ def backup():
     tar_path=folder/"source.tar.gz"
     with tarfile.open(tar_path,"w:gz") as tar:
         for file in ROOT.rglob("*"):
-            if file.is_symlink() or not file.is_file() or any(p in {".git","node_modules",".next"} for p in file.relative_to(ROOT).parts):
+            if file.is_symlink() or not file.is_file() or file.name in {"package-lock.json","tsconfig.tsbuildinfo"} or any(p in {".git","node_modules",".next"} for p in file.relative_to(ROOT).parts):
                 continue
             tar.add(file,arcname=str(file.relative_to(ROOT)),recursive=False)
     archive_hash=digest(tar_path)
