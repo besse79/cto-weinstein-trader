@@ -27,6 +27,9 @@ services:
       DATABASE_URL: postgres://trader:${POSTGRES_PASSWORD}@db:5432/trader
       APP_TOKEN: ${APP_TOKEN:?set APP_TOKEN}
       IBKR_GATEWAY_URL: ${IBKR_GATEWAY_URL:-}
+      IBKR_CONIDS_JSON: '${IBKR_CONIDS_JSON:-{}}'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
