@@ -2,6 +2,7 @@ import {gatewayBase,parseIbkrHistory} from '../../../../lib/ibkr-readonly.mjs';
 import {NextRequest} from 'next/server';
 import {authorized} from '../../../../lib/auth';
 import {pool} from '../../../../lib/db';
+import {gatewayStatus} from '../../../../lib/ibkr';
 export const dynamic='force-dynamic';
 /**
  * IBKR historical market data adapter. READ-ONLY at broker.
@@ -18,6 +19,8 @@ export async function POST(req:NextRequest){
  let mapping;try{mapping=JSON.parse(process.env.IBKR_CONIDS_JSON||'{}')}catch{return Response.json({error:'Invalid IBKR mapping configuration'},{status:503})}
  const conid=mapping[symbol];
  if(!Number.isSafeInteger(conid)||conid<=0)return Response.json({error:'Instrument not configured in IBKR allowlist'},{status:400});
+ const session=await gatewayStatus();
+ if(!session.connected)return Response.json({error:'IBKR brokerage session not authenticated',reason:session.reason||'NOT_AUTHENTICATED'},{status:503});
  const instrument=await pool.query('SELECT id FROM instruments WHERE symbol=$1',[symbol]);
  if(!instrument.rows.length)return Response.json({error:'Unknown instrument'},{status:404});
  const url=new URL(gateway+'/iserver/marketdata/history');
