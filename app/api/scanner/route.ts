@@ -16,7 +16,7 @@ export async function GET(req:NextRequest){
    const stale=lag>10;
    results.push({id:i.id,symbol:i.symbol,name:i.name,currency:i.currency,
     last:last?{day:last.day,close:last.close}:null,
-    ...scan,eligible:scan.eligible&&!stale,signal:stale?'STALE_DATA':scan.signal});
+    ...scan,eligible:scan.eligible&&!stale,signal:!last?'NO_DATA':stale?'STALE_DATA':scan.signal});
   }
   return Response.json({asOf,benchmark:'SPY',results,note:'Signals use completed ISO weeks and SPY relative strength. No automatic paper orders.'});
  }catch(e){return Response.json({error:'Scanner unavailable',detail:String(e)},{status:503})}
