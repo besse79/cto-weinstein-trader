@@ -87,3 +87,14 @@ La base est initialisée lors de la première création du volume PostgreSQL. Ne
 - IBKR Client Portal Gateway doit être installé et authentifié localement et son certificat TLS doit être approuvé. Un abonnement market data peut être nécessaire.
 - Le statut « NO_DATA » signifie qu'aucun historique n'a été importé ; « STALE_DATA » correspond à un cours importé mais périmé.
 - Pour mettre à jour l'installation WSL sans écraser la base : `cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py`. Le script vérifie la sauvegarde avant redémarrage.
+
+
+## Premier diagnostic IBKR sur le poste WSL
+1. Après validation CI, mettre le projet à jour : `cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py`.
+2. Lancer `python3 scripts/diagnose_ibkr.py`. Aucun identifiant bancaire n'est demandé ; le script contrôle le mode paper, le paramétrage local et l'accès au port de la gateway.
+3. Télécharger la Client Portal Gateway depuis les pages officielles IBKR et l'exécuter **sur la même machine** (Java requis). Authentifier la session dans un navigateur sur `https://localhost:5000`, avec les identifiants **directement sur le site local IBKR**, jamais dans l'application ni dans GitHub.
+4. Dans `.env` local seulement, configurer `IBKR_GATEWAY_URL=https://host.docker.internal:5000`. La gateway utilise normalement un certificat non reconnu : établir une relation de confiance TLS explicite dans l'environnement du conteneur avant de synchroniser des données ; ne pas désactiver globalement les vérifications TLS.
+5. Sur la page Trades du matin, entrer le jeton APP_TOKEN local, tester l'état IBKR et rechercher les contrats. Vérifier manuellement les conids et les places de marché avant de les placer dans `IBKR_CONIDS_JSON` local.
+6. **Ne pas activer le profil automation** avant validation des droits d'accès aux cotations, de la fraîcheur et des frais applicables.
+
+La session brokerage peut expirer : IBKR documente un timeout après quelques minutes sans requête, ainsi que des reconnexions quotidiennes. Le planificateur à 8h n'est donc pas une garantie de synchronisation sans réauthentification. Le programme affiche l'échec et bloque les opérations paper dans ce cas.
