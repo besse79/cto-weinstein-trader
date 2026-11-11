@@ -1,25 +1,36 @@
 # CTO Weinstein Trader
 
-Application de suivi et simulation de trading fondée sur la méthode de Stan Weinstein.
+Application web de simulation de trading (CTO) selon Stan Weinstein.
 
-## Périmètre
-- Capital fictif initial : **500 EUR**
-- Portefeuille **CTO** (pas PEA)
-- Interface Next.js / Node.js ; stockage PostgreSQL
-- IBKR : **données de marché en lecture seule** (connecteur à compléter)
-- Ordres **paper locaux uniquement**, aucun passage d'ordre réel
-- Analyse hebdomadaire : MM30, volumes, phases Weinstein et force relative
-- Gestion du risque : stop initial, break-even à +1,5R, trailing à partir de +2R
-- Bloquer toute simulation si données insuffisantes ou périmées
+## Statut
+- Branche `develop` : intégration expérimentale Next.js / PostgreSQL / API.
+- Capital initial local : **500 EUR**.
+- Ordres exclusivement **PAPER** : aucune opération d'exécution chez IBKR.
+- IBKR : contrôle d'authentification local en **lecture seule** ; récupération des cours non implémentée.
+- Écran 1 : liste de surveillance, achats bloqués (scanner Weinstein non validé).
+- Écran 2 : positions, alertes de stop et ventes fictives manuelles.
+- Stop initial enregistré ; break-even / trailing calculables dans le module de risque mais **non encore automatisés dans la base**.
+- Pas de gestion de change pour les titres USD ; seuls instruments EUR autorisés dans l'API pour l'instant.
 
-## Gestion du développement
-- `main` : branche de référence
-- `develop` : développement et intégration
-- `feature/*` : fonctionnalités ; contributions via pull requests
-- Aucun secret dans Git. Fichiers `.env`, identifiants IBKR et sauvegardes exclus.
+## Lancer localement
+Prérequis : Docker et Docker Compose.
 
-## État
-Base du projet Git initialisée le 11 novembre 2026. La V0.3 existante est en cours de migration dans le dépôt. Ne pas considérer les mécanismes de stops ou les cotations IBKR comme opérationnels avant tests documentés.
+1. Copier `.env.example` vers `.env` et y générer des secrets uniques pour `POSTGRES_PASSWORD` et `APP_TOKEN`.
+2. Exécuter `docker compose up -d`.
+3. Ouvrir `http://localhost:3010`.
 
-## Sécurité
-Ce projet est expérimental et ne passe **aucun ordre réel**. Les résultats paper ne garantissent aucune performance future.
+La base est initialisée lors de la première création du volume PostgreSQL. Ne jamais supprimer le volume `pgdata` sans sauvegarde vérifiée ; la restauration n'est pas encore automatisée dans ce dépôt.
+
+## Tests
+- `npm test` : règles de risque, break-even, stop.
+- `npm run typecheck` : TypeScript.
+- `npm run build` : Next.js.
+- Le workflow GitHub Actions exécute ces commandes sur chaque push dans `develop`.
+
+## Limites et garde-fous
+- L'import OHLCV est réservé à un jeton APP_TOKEN local et les données ne constituent pas encore une source IBKR certifiée.
+- Les achats restent manuels via API pour les tests ; il n'y a pas de signal Weinstein officiellement validé.
+- Pas d'exécution automatique de stop ni de simulation intraday des gaps.
+- Les cours manquants/périmés bloquent les transactions fictives.
+- Pas d'ordres réels, pas de clés de courtier dans le dépôt.
+- Dépôt public : ne jamais y placer de jetons, identifiants ou données privées.
