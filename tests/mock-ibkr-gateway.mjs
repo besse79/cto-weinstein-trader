@@ -8,8 +8,15 @@ const bars=Array.from({length:300},(_,i)=>{
 const server=http.createServer((req,res)=>{
  const path=new URL(req.url||'/', 'http://localhost');
  const json=(code,body)=>{res.writeHead(code,{'Content-Type':'application/json'});res.end(JSON.stringify(body))};
+ if(path.pathname==='/v1/api/iserver/auth/status' && req.method==='POST')return json(200,{authenticated:true,connected:true});
  if(req.method!=='GET')return json(405,{error:'read-only mock'});
- if(path.pathname==='/v1/api/iserver/auth/status')return json(200,{authenticated:true,connected:true});
+ if(path.pathname==='/v1/api/iserver/secdef/search'){
+   const symbol=path.searchParams.get('symbol');
+   if(symbol==='AC')return json(200,[{conid:1001,symbol:'AC',companyName:'ACCOR',description:'SBF',sections:[{secType:'STK',exchange:'SBF;'}]}]);
+   if(symbol==='SPY')return json(200,[{conid:1002,symbol:'SPY',companyName:'SPDR S&P 500 ETF',description:'ARCA',sections:[{secType:'STK',exchange:'ARCA;'}]}]);
+   return json(200,[]);
+ }
+
  if(path.pathname==='/v1/api/iserver/marketdata/history'){
    calls++;
    if(!['1001','1002'].includes(path.searchParams.get('conid')))return json(404,{error:'unrecognized conid'});
