@@ -79,6 +79,13 @@ jobs:
           exit 1
       - name: Simulate paper buying and selling
         run: node tests/integration-smoke.mjs
+      - name: Prepare paper stop gap fixture
+        run: node tests/stop-fixture.mjs
+      - name: Backdate synthetic paper purchase for completed daily candle
+        run: |
+          docker compose exec -T db psql -U trader -d trader -v ON_ERROR_STOP=1 -c "UPDATE orders SET created_at = now() - interval '3 days' WHERE id=(SELECT MAX(id) FROM orders WHERE side='BUY')"
+      - name: Verify gap-through-stop and duplicate prevention
+        run: node tests/stop-execution-e2e.mjs
       - name: Diagnose failure
         if: failure()
         run: docker compose logs --tail=150
