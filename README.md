@@ -56,3 +56,13 @@ La base est initialisée lors de la première création du volume PostgreSQL. Ne
 - Break-even à +1,5R et stop suiveur à +2R. Un stop ne redescend jamais.
 - Dépassement de stop : statut `SELL_REVIEW`, **pas une exécution fictive automatique** ; il manque un moteur d'exécution intraday avec gestion de l'ordre des événements, des gaps et des frais.
 - Aucun processus de réconciliation périodique n'est actuellement planifié : cet endpoint doit encore être appelé manuellement ou par un ordonnanceur sécurisé.
+
+
+## Orchestration paper (opt-in, non activée)
+- Module `src/paper-cycle.mjs` : synchronise séquentiellement chaque symbole déclaré dans `IBKR_SYNC_SYMBOLS`, **puis seulement en cas de succès complet**, appelle `POST /api/stops`.
+- En cas d'échec réseau, de donnée IBKR non vérifiée ou de mapping absent, **aucune exécution fictive de stops n'est déclenchée**. Les incidents doivent être consultés dans les journaux.
+- Module `scripts/scheduler.mjs` : déclenche une tentative les jours ouvrés à 08:00 (fuseau Europe/Paris), au maximum une fois par jour par processus. L'heure correspond à une analyse des dernières données disponibles, pas à une garantie de données de la veille.
+- Le service Docker est derrière le profil `automation`, **exclu du démarrage par défaut**. `PAPER_AUTOMATION_ENABLED=false` par défaut.
+- Activation volontaire seulement après la validation réelle de la gateway locale IBKR, de ses droits de données et du mapping réel de tous les symboles : `docker compose --profile automation up -d`, avec `PAPER_AUTOMATION_ENABLED=true` et `IBKR_SYNC_SYMBOLS` définis dans `.env`.
+- **Attention** : les données de marché réelles, les éventuels jours fériés, les divergences de cotation et l'import IBKR n'ont pas été validés sur un compte utilisateur. Ne pas activer ce service avant ces validations. Aucun ordre de courtier n'est envoyé.
+- La tâche n'est pas garantie pendant les arrêts du conteneur ; un déclenchement manqué n'est pas rattrapé automatiquement.
