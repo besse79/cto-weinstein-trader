@@ -53,7 +53,7 @@ export async function POST(req:NextRequest){
         currentStop:stop,peakPrice:peak,bar});
      const action=outcome.action;
      if(action==='EXIT'){
-       const fill=Math.round(outcome.fill*1e6)/1e6;
+       const fill=Math.round(Number(outcome.fill)*1e6)/1e6;
        if(!(fill>0))throw new Error('Invalid simulated fill');
        await db.query(`INSERT INTO orders(instrument_id,side,qty,price,fee,stop,mode)
          VALUES($1,'SELL',$2,$3,0,$4,'PAPER')`,[id,held,fill,stop]);
@@ -64,7 +64,7 @@ export async function POST(req:NextRequest){
          day:bar.day,qty:held,fill,reference:outcome.reference});
        break;
      }
-     stop=outcome.nextStop;peak=outcome.peakPrice;
+     stop=Number(outcome.nextStop);peak=Number(outcome.peakPrice);
      await db.query(`UPDATE risk_stops SET current_stop=$1,peak_price=$2,updated_at=now()
        WHERE instrument_id=$3`,[stop,peak,id]);
      await db.query(`INSERT INTO paper_stop_evaluations(instrument_id,day,action)
