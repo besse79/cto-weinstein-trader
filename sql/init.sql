@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS risk_stops (
   peak_price NUMERIC(18,6) NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS paper_stop_evaluations (
+  instrument_id BIGINT NOT NULL REFERENCES instruments(id),
+  day DATE NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('HOLD','EXIT')),
+  simulated_price NUMERIC(18,6),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (instrument_id,day)
+);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
 INSERT INTO settings(key,value) VALUES ('initial_cash','500'),('account_type','CTO'),('paper_only','true') ON CONFLICT DO NOTHING;
 INSERT INTO instruments(symbol,name,currency) VALUES
