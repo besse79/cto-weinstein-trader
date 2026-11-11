@@ -34,3 +34,25 @@ La base est initialisée lors de la première création du volume PostgreSQL. Ne
 - Les cours manquants/périmés bloquent les transactions fictives.
 - Pas d'ordres réels, pas de clés de courtier dans le dépôt.
 - Dépôt public : ne jamais y placer de jetons, identifiants ou données privées.
+
+
+## Scanner Weinstein (développement)
+- `GET /api/scanner` agrège l'OHLCV quotidien en semaines ISO clôturées.
+- Critères proposés (compléments opérationnels à Weinstein) : MM30 montante, cassure au-dessus des 26 semaines précédentes, volume >= 1,5 fois sa moyenne sur dix semaines, force relative positive sur 26 semaines contre SPY.
+- Minimum 40 semaines historiques et benchmark `SPY`. Cotations de plus de 10 jours : statut `STALE_DATA`.
+- `PHASE2_BREAKOUT` reste un **signal de surveillance**, pas un ordre ou une promesse de performance.
+- Pas de cotations fictives préchargées : scanner vide tant que l'import n'a pas été réalisé.
+
+## Données IBKR
+- `POST /api/ibkr/history` avec jeton `x-app-token` et corps `{"symbol":"AC.PA"}`.
+- Requiert `IBKR_GATEWAY_URL` pointant vers une gateway **locale** et `IBKR_CONIDS_JSON` (mapping de symboles vers les vrais identifiants de contrats IBKR validés par l'utilisateur).
+- Exemple `IBKR_CONIDS_JSON={"AC.PA":123456}` (identifiant fictif pour illustrer la syntaxe ; ne pas le reprendre).
+- Lit **uniquement** `GET /iserver/marketdata/history`. N'envoie aucun ordre au courtier. Compte et droits de données de marché requis chez IBKR.
+- La certification TLS de la gateway doit être établie correctement. Ne pas désactiver la validation TLS en production.
+- Respecter les limites documentées d'IBKR : 10 requêtes/s ou 50 requêtes/min pour l'historique (septembre 2026). L'import s'effectue pour un instrument par demande.
+
+## Stops paper
+- `POST /api/stops` (avec `x-app-token`) actualise les stops selon les dernières **clôtures disponibles**.
+- Break-even à +1,5R et stop suiveur à +2R. Un stop ne redescend jamais.
+- Dépassement de stop : statut `SELL_REVIEW`, **pas une exécution fictive automatique** ; il manque un moteur d'exécution intraday avec gestion de l'ordre des événements, des gaps et des frais.
+- Aucun processus de réconciliation périodique n'est actuellement planifié : cet endpoint doit encore être appelé manuellement ou par un ordonnanceur sécurisé.
