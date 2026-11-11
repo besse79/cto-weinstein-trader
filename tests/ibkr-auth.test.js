@@ -12,3 +12,9 @@ test('malformed payload fails closed',()=>{
  for(const value of [null,{},[],{success:{value:{authenticated:'true'}}}])
    assert.equal(parseGatewayAuth(value),false);
 });
+
+test('rejects competing or incompletely connected sessions',()=>{
+ assert.equal(parseGatewayAuth({authenticated:true}),false);
+ assert.equal(parseGatewayAuth({authenticated:true,connected:true,competing:true}),false);
+ assert.equal(parseGatewayAuth({success:{value:{authenticated:true,connected:true,competing:true}}}),false);
+});
