@@ -28,6 +28,7 @@ export function aggregateWeeks(daily){
  * asOf is the scan's last completed trading date (YYYY-MM-DD).
  * Last partial ISO week is deliberately excluded; scanner only uses previous completed weeks.
  */
+/** @param {any[]} daily @param {{asOf?:string, benchmarkDaily?:any[]|null}} [options] */
 export function scanWeinstein(daily,{asOf=new Date().toISOString().slice(0,10),benchmarkDaily=null}={}){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error('Invalid asOf');
  const asDay=new Date(asOf+'T12:00:00Z');if(!Number.isFinite(+asDay))throw new Error('Invalid asOf');
