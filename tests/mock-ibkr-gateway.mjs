@@ -8,7 +8,7 @@ const bars=Array.from({length:300},(_,i)=>{
 const server=http.createServer((req,res)=>{
  const path=new URL(req.url||'/', 'http://localhost');
  const json=(code,body)=>{res.writeHead(code,{'Content-Type':'application/json'});res.end(JSON.stringify(body))};
- if(path.pathname==='/v1/api/iserver/auth/status' && req.method==='POST')return json(200,{authenticated:true,connected:true});
+ if(path.pathname==='/v1/api/iserver/auth/status' && req.method==='POST')return json(200,{success:{value:{authenticated:true,connected:true,established:true}}});
  if(req.method!=='GET')return json(405,{error:'read-only mock'});
  if(path.pathname==='/v1/api/iserver/secdef/search'){
    const symbol=path.searchParams.get('symbol');
