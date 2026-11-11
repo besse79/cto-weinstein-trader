@@ -1,10 +1,5 @@
+import {parseGatewayAuth} from './ibkr-auth.mjs';
 import {gatewayBase} from './ibkr-readonly.mjs';
-export function parseGatewayAuth(payload:unknown):boolean {
- const p=payload as {authenticated?:unknown;success?:{value?:{authenticated?:unknown;connected?:unknown;established?:unknown}}}|null;
- const s=p?.success?.value;
- if(s)return s.authenticated===true && s.connected!==false && s.established!==false;
- return p?.authenticated===true;
-}
 // Broker auth diagnostic only; no order endpoints.
 export async function gatewayStatus(){
  const base=gatewayBase(process.env.IBKR_GATEWAY_URL);
