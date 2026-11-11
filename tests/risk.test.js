@@ -30,3 +30,33 @@ test('gap below current stop triggers exit review',()=>{
  const result=updatePaperStop({entry:100,initialStop:95,currentStop:100,highestPrice:110,lastPrice:96});
  assert.equal(result.stopTriggered,true);
 });
+
+test('reject buy when four positions already open',()=>{
+ const result=sizePosition({equity:500,cash:500,entry:100,initialStop:95,openPositions:4});
+ assert.equal(result.allowed,false);
+});
+test('reject stop at or above entry',()=>{
+ const result=sizePosition({equity:500,cash:500,entry:100,initialStop:100});
+ assert.equal(result.allowed,false);
+});
+test('reject negative equity and non-finite values',()=>{
+ assert.equal(sizePosition({equity:-500,cash:500,entry:100,initialStop:95}).allowed,false);
+ assert.equal(sizePosition({equity:500,cash:500,entry:Infinity,initialStop:95}).allowed,false);
+});
+test('fees count against maximum risk and available cash',()=>{
+ const result=sizePosition({equity:500,cash:500,entry:100,initialStop:95,allowFractional:true,estimatedFees:1});
+ assert.equal(result.allowed,true);
+ assert.ok(result.estimatedInitialRisk<=5);
+});
+test('stop does not move before 1.5 R',()=>{
+ const result=updatePaperStop({entry:100,initialStop:95,currentStop:95,highestPrice:107,lastPrice:107});
+ assert.equal(result.currentStop,95);
+});
+test('stop is not lowered if last price is below proposed stop',()=>{
+ const result=updatePaperStop({entry:100,initialStop:95,currentStop:100,highestPrice:115,lastPrice:99});
+ assert.equal(result.currentStop,100);
+ assert.equal(result.stopTriggered,true);
+});
+test('reject inconsistent stop inputs',()=>{
+ assert.throws(()=>updatePaperStop({entry:100,initialStop:95,currentStop:94,highestPrice:110,lastPrice:105}));
+});
