@@ -94,8 +94,7 @@ def check_prerequisites():
     run(["docker","info"],capture=True)
     run(["docker","compose","version"],capture=True)
     if not (ROOT/"docker-compose.yml").is_file(): raise RuntimeError("Missing compose configuration")
-    docker("config","--quiet")
-    print("Docker and Compose configuration: OK")
+    print("Docker and Compose tooling: OK")
 
 def main():
     parser=argparse.ArgumentParser()
@@ -105,6 +104,7 @@ def main():
         check_prerequisites()
         if args.check: return 0
         ensure_env()
+        docker("config","--quiet")
         backup()
         # Never start the opt-in automation profile. No real trading endpoints exist.
         docker("up","-d","--wait","db","web")
