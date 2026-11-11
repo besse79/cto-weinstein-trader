@@ -27,7 +27,7 @@ check(almost(r.body.initial,500)&&almost(r.body.cash,500)&&almost(r.body.equity,
 check(r.body.positions.length===0 && r.body.orders.length===0,'Portfolio and ledger are empty');
 check(r.body.signals.every(s=>s.status==='NO_CONFIRMED_SIGNAL'),'No fake Weinstein buy signals');
 r=await api('/api/scanner');
-check(r.status===200 && Array.isArray(r.body.results) && r.body.results.every(x=>!x.eligible),'Scanner safely reports no buy without sufficient history');
+check(r.status===200 && Array.isArray(r.body.results) && r.body.results.every(x=>!x.eligible && x.signal==='NO_DATA'),'Scanner distinguishes absent market data and blocks every buy');
 r=await api('/api/ibkr');
 check(r.status===401,'IBKR status needs authorization');
 r=await api('/api/ibkr',{headers:auth});
