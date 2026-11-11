@@ -20,3 +20,35 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trader
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: trader
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trader -d trader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: test-password
+      PGHOST: localhost
+      PGUSER: trader
+      PGDATABASE: trader
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize schema and validate initial portfolio
+        run: |
+          psql -v ON_ERROR_STOP=1 -f sql/init.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='initial_cash'" | grep -Fx 500
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='account_type'" | grep -Fx CTO
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='paper_only'" | grep -Fx true
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 4
+      - name: Verify schema initialization is idempotent
+        run: psql -v ON_ERROR_STOP=1 -f sql/init.sql
