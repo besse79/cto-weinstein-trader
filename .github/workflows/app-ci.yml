@@ -49,7 +49,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='initial_cash'" | grep -Fx 500
           psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='account_type'" | grep -Fx CTO
           psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='paper_only'" | grep -Fx true
-          psql -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 4
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 5
       - name: Verify schema initialization is idempotent
         run: psql -v ON_ERROR_STOP=1 -f sql/init.sql
   docker-paper-e2e:
