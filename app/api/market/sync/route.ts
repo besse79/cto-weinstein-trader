@@ -16,19 +16,32 @@ export async function POST(req:NextRequest){
  try{body=await req.json()}catch{return Response.json({error:'Invalid JSON'},{status:400})}
  if(!body||typeof body!=='object'||Array.isArray(body))
   return Response.json({error:'Invalid request'},{status:400});
+ // Existing clients using {all:true} retain the original core-six import.
+ // Expansion is opt-in: one explicitly selected batch of up to six tickers.
+ const core=['EXSA.DE','SPY','AC.PA','LR.PA','SAF.PA','SU.PA'];
  const all=body.all===true;
- const symbol=all?null:body.symbol;
- if(!all && (typeof symbol!=='string'|| !/^[A-Z0-9.^-]{1,24}$/.test(symbol)))
+ const symbols=all?core:body.symbols;
+ const symbol=typeof body.symbol==='string'?body.symbol:null;
+ if(!all && symbols===undefined &&
+    (typeof symbol!=='string'|| !/^[A-Z0-9.^-]{1,24}$/.test(symbol)))
   return Response.json({error:'Invalid symbol'},{status:400});
+ if(!all && symbols!==undefined &&
+    (!Array.isArray(symbols)||symbols.length<1||symbols.length>6||
+      symbols.some(s=>typeof s!=='string'|| !/^[A-Z0-9.^-]{1,24}$/.test(s))||
+      new Set(symbols).size!==symbols.length))
+  return Response.json({error:'Expected 1..6 distinct Yahoo ticker symbols'},{status:400});
  const db=await pool.connect();
  let locked=false,transaction=false;
  try{
   const lock=(await db.query('SELECT pg_try_advisory_lock(147005) AS acquired')).rows[0]?.acquired;
   if(!lock)return Response.json({error:'Market sync already running'},{status:409});
   locked=true;
-  const instruments=(await db.query("SELECT id,symbol,currency FROM instruments WHERE symbol=$1 OR $2::boolean ORDER BY CASE WHEN symbol IN ('EXSA.DE','SPY') THEN 0 ELSE 1 END,symbol",[symbol,all])).rows;
-  if(!instruments.length || instruments.length>100)
-   return Response.json({error:'Instrument not on local watchlist'},{status:404});
+  const selected=Array.isArray(symbols)?symbols:[symbol];
+  const instruments=(await db.query(
+    "SELECT id,symbol,currency FROM instruments WHERE symbol = ANY($1::text[]) ORDER BY CASE WHEN symbol IN ('EXSA.DE','SPY') THEN 0 ELSE 1 END,symbol",
+    [selected])).rows;
+  if(!instruments.length || instruments.length!==selected.length)
+   return Response.json({error:'Unknown ticker in requested batch; no import executed'},{status:404});
   // Test override is only available inside explicitly marked GitHub CI.
   const mock=process.env.CI==='true' && process.env.YAHOO_TEST_BASE_URL;
   const testBase=mock?String(process.env.YAHOO_TEST_BASE_URL):'';
