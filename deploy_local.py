@@ -106,8 +106,17 @@ def main():
         ensure_env()
         docker("config","--quiet")
         backup()
+        # Persisted PostgreSQL volumes do not replay docker-entrypoint-initdb.d.
+        # Always take a verified source + database backup BEFORE migrations.
+        docker("up","-d","--wait","db")
+        migration = ROOT / "sql/migrations/002_currency_benchmarks.sql"
+        if not migration.is_file():
+            raise RuntimeError("Missing required schema migration 002")
+        docker("exec","-T","db","psql","-v","ON_ERROR_STOP=1",
+               "-U","trader","-d","trader",input_data=migration.read_bytes())
+        print("Idempotent benchmark schema migration: OK")
         # Never start the opt-in automation profile. No real trading endpoints exist.
-        docker("up","-d","--wait","db","web")
+        docker("up","-d","--wait","web")
         url=f"http://127.0.0.1:{PORT}/api/dashboard"
         import time
         for _ in range(90):
