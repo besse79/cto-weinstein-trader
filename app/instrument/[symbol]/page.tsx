@@ -68,7 +68,7 @@ export default function InstrumentDetailPage(){
    </div>
    <section className="chart-panel">
     <h2>Analyse graphique</h2>
-    <WeeklyPriceChart series={detail.series} levels={levels} highlight={detail.highlight} currency={detail.instrument.currency}/>
+    <WeeklyPriceChart series={detail.series} levels={levels??null} highlight={detail.highlight} currency={detail.instrument.currency}/>
    </section>
    <section className="detail-analysis">
     <h2>Pourquoi ce classement ?</h2>
