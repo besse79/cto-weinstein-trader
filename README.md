@@ -59,3 +59,16 @@ GitHub Actions vérifie également la base PostgreSQL, les transactions paper, l
 La clé `APP_TOKEN` reste uniquement dans le fichier local `.env`, jamais dans GitHub. Le site est publié sur `127.0.0.1:3010` uniquement. Il n'existe aucune route vers un courtier ni aucun composant d'exécution d'ordres réels. L'application n'envoie pas d'identifiants à Yahoo.
 
 Les anciens endpoints IBKR et leur ordonnanceur ont été retirés du projet.
+
+## Anticipation de la phase 2 : base de phase 1
+
+Le scanner distingue les états calculés **uniquement sur les semaines ISO terminées** :
+
+- **`PHASE1_LATE` / `PHASE1_END`** : base des 16 dernières semaines dont l'amplitude est au plus 30 %, baisse préalable d'au moins 18 % par rapport à un sommet historique de référence, pente MM30 sur six semaines comprise entre -4 % et +4 %, cours au moins égal à 95 % de la MM30, force relative à 26 semaines supérieure ou égale à -5 %, et distance à la résistance de 0 à 10 %. **Veille uniquement, pas d'achat.**
+- **`PHASE1_BASE` / `PHASE1_FORMING`** : mêmes prérequis, distance à la résistance entre 10 et 20 %. Stade préliminaire de veille, pas d'achat.
+- **`PHASE2_BREAKOUT` / `PHASE2_ENTRY`** : clôture hebdomadaire dépassant les sommets des 26 semaines précédentes, cours supérieur à MM30, MM30 montante, volume hebdomadaire au moins 1,5× celui des dix semaines précédentes, force relative positive contre le benchmark de même devise, et base préalable de 12 semaines dont l'amplitude est de 30 % maximum. Signal indicatif, **aucun ordre automatique**.
+- **`WATCH`** : autres profils non classés ; ne pas confondre une consolidation en phase 3 avec une base de phase 1.
+
+Ces paramètres sont des **heuristiques opérationnelles à backtester**, pas une garantie de conformité à une phase Weinstein. Un `setupScore` de 0 à 100 sert uniquement au classement : il ne représente ni une probabilité de hausse ni une estimation de rendement. Une référence absente ou périmée empêche tout signal exploitable.
+
+Le nombre d'instruments surveillés reste pour l'instant limité aux quatre actions et deux benchmarks importés ; l'élargissement de l'univers devra être traité séparément avec gestion des droits d'accès aux données et de la charge de synchronisation Yahoo.
