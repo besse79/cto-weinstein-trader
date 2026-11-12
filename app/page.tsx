@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import Link from 'next/link';
 type Signal={id:number;symbol:string;name:string;currency:string;status:string;last:{day:string;close:number}|null};
 type Position={id:number;symbol:string;name:string;qty:number;avg:number;last:number|null;quoteDate:string|null;stop:number|null;alert:string};
 type Order={id:number;symbol:string;side:string;qty:number;price:number;fee:number;created_at:string};
@@ -84,7 +85,7 @@ export default function Home(){
     <thead><tr><th>Valeur</th><th>Dernier cours</th><th>MM30</th><th>Écart résistance</th><th>Pente MM30</th><th>Volume ×</th><th>Force relative</th><th>État</th><th>Raisons / contrôles</th></tr></thead>
     <tbody>
      {visibleScans.length?visibleScans.map(s=><tr key={s.id}>
-      <td>{s.name}<small>{s.symbol} · {s.last?.day??'Non importé'}</small></td>
+      <td><Link className="instrument-link" href={'/instrument/'+encodeURIComponent(s.symbol)}>{s.name} ↗</Link><small>{s.symbol} · {s.last?.day??'Non importé'}</small></td>
       <td>{euro(s.last?.close)}</td>
       <td>{euro(s.ma30)}</td>
       <td>{s.resistanceDistancePct==null?'—':s.resistanceDistancePct.toFixed(1)+' %'}</td>
