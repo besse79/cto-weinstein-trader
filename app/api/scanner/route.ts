@@ -1,6 +1,7 @@
 import {pool} from '../../../lib/db';
 import {scanWeinstein} from '../../../src/weinstein.mjs';
 import {explainSetup} from '../../../src/weinstein-explain.mjs';
+import {assessWatch} from '../../../src/weinstein-watch.mjs';
 export const dynamic='force-dynamic';
 
 const BENCHMARK_BY_CURRENCY:Record<string,string>={EUR:'EXSA.DE',USD:'SPY'};
@@ -30,12 +31,14 @@ export async function GET(){
    const benchmarkLag=benchmarkLast?.day?(now.getTime()-Date.parse(benchmarkLast.day+'T12:00:00Z'))/86400000:Infinity;
    const noBenchmark=!comparison?.length;
    const staleBenchmark=benchmarkLag>10;
-   const explain=explainSetup({...scan,lastClose:last?.close});
+   const explain=explainSetup({...scan,lastClose:scan.lastCompletedClose});
    const status=!last?'NO_DATA':stale?'STALE_DATA':noBenchmark?'NO_BENCHMARK':staleBenchmark?'STALE_BENCHMARK':null;
+   const watch=status?null:assessWatch(data,scan,{asOf});
    results.push({
     id:i.id,symbol:i.symbol,name:i.name,currency:i.currency,
     last:last?{day:last.day,close:last.close}:null,
     ...scan,...explain,benchmark:benchmark??null,
+    ...(watch??{watchScore:null,watchStatus:'UNAVAILABLE',watchReasons:[],currentResistance:null,distanceToResistancePct:null,provisional:false,latestDaily:null,lastCompletedWeek:null}),
     eligible:!!explain.eligible&&!status,
     stage:status?'DATA_UNAVAILABLE':explain.stage,
     stageRank:status?99:explain.stageRank,
