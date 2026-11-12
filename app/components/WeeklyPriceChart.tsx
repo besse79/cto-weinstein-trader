@@ -4,11 +4,12 @@ import {useMemo,useState} from 'react';
 type Candle={week:string;lastDay:string;open:number;high:number;low:number;close:number;volume:number;ma30:number|null;volumeAvg10:number|null};
 type Levels={resistance26:number;support8:number;ma30:number;baseHigh:number;baseLow:number}|null;
 type Highlight={type:string;from:string;to:string}|null;
+type DailyMarker={day:string;close:number}|null;
 const num=(x:number)=>x.toLocaleString('fr-FR',{maximumFractionDigits:0});
 const WIDTH=1020,PRICE_H=385,VOL_H=150,LEFT=70,RIGHT=30;
 
-export default function WeeklyPriceChart({series,levels,highlight,currency='EUR'}:{
- series:Candle[];levels:Levels;highlight:Highlight;currency?:string
+export default function WeeklyPriceChart({series,levels,highlight,dailyMarker=null,watchResistance=null,currency='EUR'}:{
+ series:Candle[];levels:Levels;highlight:Highlight;dailyMarker?:DailyMarker;watchResistance?:number|null;currency?:string
 }){
  const [hover,setHover]=useState<number|null>(null);
  const [windowWeeks,setWindowWeeks]=useState(104);
@@ -17,6 +18,8 @@ export default function WeeklyPriceChart({series,levels,highlight,currency='EUR'
   if(!data.length)return null;
   const lines=[...data.flatMap(d=>[d.low,d.high]),...data.flatMap(d=>d.ma30==null?[]:[d.ma30])];
   if(levels)lines.push(levels.resistance26,levels.support8);
+  if(Number.isFinite(dailyMarker?.close))lines.push(dailyMarker!.close);
+  if(Number.isFinite(watchResistance))lines.push(watchResistance as number);
   let min=Math.min(...lines),max=Math.max(...lines);
   const pad=(max-min)*.09||1;min=Math.max(0,min-pad);max+=pad;
   const x=(i:number)=>LEFT+(i/(Math.max(1,data.length-1)))*(WIDTH-LEFT-RIGHT);
@@ -31,10 +34,11 @@ export default function WeeklyPriceChart({series,levels,highlight,currency='EUR'
   const idx=highlight?.type==='CURRENT_BASE'?data.findIndex(d=>d.week>=highlight.from):-1;
   const breakout=highlight?.type==='LATEST_BREAKOUT'?data.findIndex(d=>d.week===highlight.from):-1;
   return {min,max,x,y,volumeY,maxVolume,pricePath,maPath,idx,breakout};
- },[data,levels,highlight]);
+ },[data,levels,highlight,dailyMarker,watchResistance]);
  if(!chart||!data.length)return <p className="muted">Aucune cotation hebdomadaire disponible. Importer l'historique Yahoo pour ce titre.</p>;
  const active=hover===null?data.length-1:Math.max(0,Math.min(hover,data.length-1));
  const latest=data[active];
+ const showDaily=!!dailyMarker&&dailyMarker.day>data.at(-1)!.lastDay;
  const label=currency==='EUR'?'€':currency;
  const fmtPrice=(n:number)=>n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+label;
  return <div className="weekly-chart">
@@ -62,6 +66,12 @@ export default function WeeklyPriceChart({series,levels,highlight,currency='EUR'
      <text x={WIDTH-RIGHT-4} y={chart.y(levels.resistance26)-7} textAnchor="end" fill="#f2b187" fontSize="12">R {levels.resistance26.toFixed(2)}</text>
      <text x={WIDTH-RIGHT-4} y={chart.y(levels.support8)+16} textAnchor="end" fill="#64d3b1" fontSize="12">S {levels.support8.toFixed(2)}</text>
     </>}
+    {showDaily&&dailyMarker&&<>
+     {Number.isFinite(watchResistance)&&<line x1={WIDTH-235} x2={WIDTH-RIGHT} y1={chart.y(watchResistance as number)} y2={chart.y(watchResistance as number)} stroke="#bf9fff" strokeWidth="1.6" strokeDasharray="4 4"/>}
+     <line x1={WIDTH-155} x2={WIDTH-RIGHT} y1={chart.y(dailyMarker.close)} y2={chart.y(dailyMarker.close)} stroke="#f3db70" strokeWidth="2" strokeDasharray="5 4"/>
+     <circle cx={WIDTH-RIGHT-5} cy={chart.y(dailyMarker.close)} r="5" fill="#f3db70"/>
+     <text x={WIDTH-RIGHT-10} y={chart.y(dailyMarker.close)-11} textAnchor="end" fill="#f3db70" fontSize="12">Jour {dailyMarker.close.toFixed(2)}</text>
+    </>}
     <path d={chart.pricePath} fill="none" stroke="#9cbbf4" strokeWidth="2.4" strokeLinejoin="round"/>
     {chart.maPath&&<path d={chart.maPath} fill="none" stroke="#ffc467" strokeWidth="2.4" strokeLinejoin="round"/>}
     {chart.breakout>=0&&<g><circle cx={chart.x(chart.breakout)} cy={chart.y(data[chart.breakout].close)} r="7" fill="#53c9a4" stroke="#e7fff6" strokeWidth="2"/><text x={Math.max(LEFT+75,chart.x(chart.breakout)-6)} y={chart.y(data[chart.breakout].close)-18} textAnchor="end" fontSize="13" fill="#7ce3c2">Cassure</text></g>}
@@ -70,6 +80,7 @@ export default function WeeklyPriceChart({series,levels,highlight,currency='EUR'
     {data.filter((_,i)=>i%Math.max(1,Math.floor(data.length/9))===0).map(d=><text key={d.week} x={chart.x(data.indexOf(d))} y={PRICE_H-7} textAnchor="middle" fill="#96aabe" fontSize="12">{d.week.slice(0,7)}</text>)}
    </svg>
   </div>
+  {showDaily&&dailyMarker&&<p className="muted">Dernière clôture quotidienne : {dailyMarker.day} — {fmtPrice(dailyMarker.close)}. Point jaune séparé, non intégré à la courbe hebdomadaire ; cassure éventuellement provisoire.</p>}
   <div className="chart-inspector"><strong>{latest.lastDay}</strong><span>Clôture : {fmtPrice(latest.close)}</span><span>MM30 : {latest.ma30==null?'—':fmtPrice(latest.ma30)}</span><span>Plus haut : {fmtPrice(latest.high)}</span><span>Plus bas : {fmtPrice(latest.low)}</span></div>
   <div className="chart-volume-heading"><strong>Volume hebdomadaire</strong><span>Colonnes : titres négociés · ligne : moyenne précédente 10 sem.</span></div>
   <div className="chart-scroll">
