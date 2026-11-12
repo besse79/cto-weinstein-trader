@@ -10,7 +10,7 @@ async function post(path,body,auth=true){
 }
 let r=await post('/api/market/sync',{all:true},false);
 assert.equal(r.status,401);
-r=await post('/api/market/sync',{symbol:'NOT_IN_DB'});
+r=await post('/api/market/sync',{symbol:'NOTINDB'});
 assert.equal(r.status,404);
 r=await post('/api/market/sync',{all:true});
 assert.equal(r.status,200,JSON.stringify(r));
