@@ -91,7 +91,7 @@ export function scanWeinstein(daily,{asOf=new Date().toISOString().slice(0,10),b
     70-Math.max(0,resistanceDistancePct)*2+
     Math.max(-10,Math.min(10,relativeStrength??0))+
     (maSlope6Pct>=0?5:0)))):0;
- return {signal,stage,stageRank,setupScore,eligible,asOf:latest.lastDay,weeks:n,
+ return {signal,stage,stageRank,setupScore,eligible,asOf:latest.lastDay,lastCompletedClose:latest.close,weeks:n,
    ma30,prevMa30,priorHigh,breakout,aboveMa,rising,volumeRatio,
    relativeStrength,requiresBenchmark:true,
    baseWeeks:16,baseRangePct,resistanceDistancePct,maSlope6Pct,priorDeclinePct,
