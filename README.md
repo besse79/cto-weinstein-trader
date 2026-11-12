@@ -72,3 +72,18 @@ Le scanner distingue les états calculés **uniquement sur les semaines ISO term
 Ces paramètres sont des **heuristiques opérationnelles à backtester**, pas une garantie de conformité à une phase Weinstein. Un `setupScore` de 0 à 100 sert uniquement au classement : il ne représente ni une probabilité de hausse ni une estimation de rendement. Une référence absente ou périmée empêche tout signal exploitable.
 
 Le nombre d'instruments surveillés reste pour l'instant limité aux quatre actions et deux benchmarks importés ; l'élargissement de l'univers devra être traité séparément avec gestion des droits d'accès aux données et de la charge de synchronisation Yahoo.
+
+## Univers élargi de surveillance (novembre 2026)
+
+La migration SQL `003_french_large_caps.sql` ajoute 20 sociétés cotées à Paris à la base des quatre actions initiales, pour **24 actions en EUR et deux benchmarks** (EXSA.DE en EUR, SPY en USD). Les mnémoniques proviennent d'une sélection de sociétés du SBF 120 publiées par Euronext ; **ce n'est pas la composition exhaustive du CAC 40 ni du SBF 120**. La composition des indices peut évoluer.
+
+- `GET /api/universe` affiche les instruments déjà enregistrés, le nombre de bougies et la date du dernier cours, groupés en lots de six maximum.
+- Dans l'interface, l'utilisateur sélectionne **un lot**, puis déclenche explicitement son import Yahoo. L'ancien appel `{ "all": true }` reste compatible mais importe **uniquement les six instruments initiaux**. Les nouveaux appels utilisent `{ "symbols": ["AI.PA", "AIR.PA"] }` avec de un à six symboles distincts présents en base.
+- Chaque lot est atomique : symbole, devise ou prix invalide => aucune bougie de ce lot n'est écrite. Aucun contournement des restrictions Yahoo, aucun ordonnanceur et aucun transfert d'ordre.
+- Le scanner comporte trois listes : **cassures de phase 2**, **bases de fin de phase 1**, **rejets / données absentes**. Chaque rejet décrit les critères manquants.
+- Une cassure confirmée mais située à plus de **20 % au-dessus de la MM30** est classée `PHASE2_EXTENDED`, et n'est **pas éligible** au signal d'entrée initial. Ce seuil conservateur est heuristique et doit être backtesté.
+- Les titres qui ne sont pas encore importés restent `NO_DATA` et ne peuvent pas générer d'achats.
+
+**Périmètre des tests :** API Yahoo simulée, import réel initial de six titres confirmé par l'utilisateur, mais la disponibilité des nouveaux symboles n'a pas encore été testée sur son WSL. Une place de cotation ou une devise incompatible bloque l'import concerné sans donner de faux signal.
+
+La sauvegarde vérifiée des sources et de PostgreSQL est exécutée par `deploy_local.py` **avant** la migration 003. Les données historiques déjà présentes restent en place.
