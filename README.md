@@ -98,3 +98,11 @@ La base est initialisée lors de la première création du volume PostgreSQL. Ne
 6. **Ne pas activer le profil automation** avant validation des droits d'accès aux cotations, de la fraîcheur et des frais applicables.
 
 La session brokerage peut expirer : IBKR documente un timeout après quelques minutes sans requête, ainsi que des reconnexions quotidiennes. Le planificateur à 8h n'est donc pas une garantie de synchronisation sans réauthentification. Le programme affiche l'échec et bloque les opérations paper dans ce cas.
+
+
+## Sécurité et benchmarks (branche feature/ibkr-data-integrity)
+- L'historique IBKR n'est enregistré que si le symbole renvoyé correspond strictement à l'instrument demandé : `AC.PA → AC`, `EXSA.DE → EXSA`, `SPY → SPY`. Les conids restent soumis à une validation manuelle de la place, de la devise et du type de titre.
+- Comparaisons de force relative cohérentes : **EUR vs EXSA.DE** (ETF STOXX Europe 600 coté en EUR), **USD vs SPY** (ETF S&P 500 coté en USD). Sans benchmark configuré et alimenté, aucun signal d'achat n'est autorisé.
+- La migration `sql/migrations/002_currency_benchmarks.sql` est appliquée par `deploy_local.py` **après** sauvegarde vérifiée de la base PostgreSQL. Les volumes existants ne rejouent pas automatiquement `sql/init.sql`.
+- Next.js et React sont mis à jour vers les versions correctives de novembre 2026 ; les dépendances devront passer `npm audit`, le build et les tests Docker avant fusion.
+- Les tests unitaires du validateur IBKR ont été également exécutés indépendamment sous Node 22 (8/8 réussis), mais la CI GitHub complète reste en attente. Ne pas déployer cette branche avant validation.
