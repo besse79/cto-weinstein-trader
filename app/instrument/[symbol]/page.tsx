@@ -84,7 +84,7 @@ export default function InstrumentDetailPage(){
     <h2>Pourquoi ce classement ?</h2>
     <p className="muted">Les critères sont calculés sur des semaines terminées, sans anticiper la prochaine clôture.</p>
     <ul>{state?.reasons?.length?state.reasons.map((reason,i)=><li key={i}>{reason}</li>):<li>Aucune évaluation disponible</li>}</ul>
-    {detail.watch?.watchReasons?.length>0&&<><h3>Critères de veille quotidienne</h3>
+    {detail.watch && detail.watch.watchReasons.length>0&&<><h3>Critères de veille quotidienne</h3>
      <ul>{detail.watch.watchReasons.map((reason,i)=><li key={i}>{reason}</li>)}</ul>
     </>}
     <div className="detail-metrics">
