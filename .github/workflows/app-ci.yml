@@ -160,6 +160,11 @@ jobs:
           curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
       - name: Run installer again to produce verified PostgreSQL backup
         run: python3 deploy_local.py
+      - name: Verify 26-instrument universe added idempotently
+        run: |
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 26
+          docker compose -p cto_weinstein exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader < sql/migrations/003_french_large_caps.sql
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 26
       - name: Verify EUR benchmark migrated exactly once
         run: |
           docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments WHERE symbol='EXSA.DE' AND currency='EUR'" | grep -Fx 1
