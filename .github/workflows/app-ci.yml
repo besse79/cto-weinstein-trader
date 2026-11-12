@@ -2,6 +2,8 @@ name: Application CI
 on:
   push:
     branches: [develop, main]
+  pull_request:
+    branches: [develop]
 concurrency:
   group: application-ci-${{ github.ref }}
   cancel-in-progress: true
