@@ -13,6 +13,7 @@ assert.equal(noHistoryResponse.status,200);
 const noHistory=await noHistoryResponse.json();
 assert.equal(noHistory.assessment.signal,'NO_DATA');
 assert.equal(noHistory.assessment.eligible,false);
+assert.equal(noHistory.watch,null);
 assert.deepEqual(noHistory.series,[]);
 let r=await post('/api/market/sync',{all:true},false);
 assert.equal(r.status,401);
@@ -38,6 +39,8 @@ for(const x of scanner.results){
  assert.equal(x.benchmark,'EXSA.DE');
  assert.notEqual(x.signal,'NO_DATA');
  assert.notEqual(x.signal,'STALE_DATA');
+ assert.ok(typeof x.watchScore==='number',x.symbol+' has numeric watch score');
+ assert.ok(['PROVISIONAL_BREAKOUT','NEAR_RESISTANCE','WATCH'].includes(x.watchStatus));
 }
 const detailResponse=await fetch(base+'/api/instrument/AC.PA');
 assert.equal(detailResponse.status,200);
@@ -51,6 +54,9 @@ assert.ok(detail.series.at(-1).ma30>0);
 assert.ok(detail.series.at(-1).volumeAvg10>0);
 assert.ok(detail.levels.resistance26>0 && detail.levels.support8>0);
 assert.equal(detail.assessment.eligible,false,'Chart must not trigger broker/paper orders');
+assert.ok(detail.watch&&typeof detail.watch.watchScore==='number');
+assert.ok(Number.isFinite(detail.watch.currentResistance));
+assert.ok(Array.isArray(detail.watch.watchReasons));
 assert.ok(Array.isArray(detail.assessment.reasons));
 assert.ok(detail.explanation.includes('pas une classification rétrospective'));
 const missing=await fetch(base+'/api/instrument/UNKNOWN.PA');

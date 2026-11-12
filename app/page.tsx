@@ -5,12 +5,12 @@ type Signal={id:number;symbol:string;name:string;currency:string;status:string;l
 type Position={id:number;symbol:string;name:string;qty:number;avg:number;last:number|null;quoteDate:string|null;stop:number|null;alert:string};
 type Order={id:number;symbol:string;side:string;qty:number;price:number;fee:number;created_at:string};
 type UniverseBatch={id:string;name:string;symbols:string[];instruments:{symbol:string;name:string;bars:number;last_day:string|null}[]};
-type Scan={id:number;symbol:string;name:string;signal:string;stage?:string;stageRank?:number;setupScore?:number;reasons?:string[];distanceFromMaPct?:number;resistanceDistancePct?:number;maSlope6Pct?:number;priorDeclinePct?:number;eligible:boolean;last:{day:string;close:number}|null;ma30?:number;volumeRatio?:number;relativeStrength?:number;priorHigh?:number};
+type Scan={id:number;symbol:string;name:string;signal:string;stage?:string;stageRank?:number;setupScore?:number;watchScore?:number|null;watchStatus?:string;provisional?:boolean;currentResistance?:number|null;distanceToResistancePct?:number|null;watchReasons?:string[];reasons?:string[];distanceFromMaPct?:number;resistanceDistancePct?:number;maSlope6Pct?:number;priorDeclinePct?:number;eligible:boolean;last:{day:string;close:number}|null;ma30?:number;volumeRatio?:number;relativeStrength?:number;priorHigh?:number};
 type Dashboard={mode:string;initial:number;cash:number;equity:number;signals:Signal[];positions:Position[];orders:Order[];error?:string};
 const euro=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 export default function Home(){
  const [tab,setTab]=useState(0),[data,setData]=useState<Dashboard|null>(null),[scans,setScans]=useState<Scan[]>([]),[token,setToken]=useState(''),[message,setMessage]=useState('');
- const [syncBusy,setSyncBusy]=useState(false),[batches,setBatches]=useState<UniverseBatch[]>([]),[batchIndex,setBatchIndex]=useState(0),[screenView,setScreenView]=useState<'PHASE2'|'PHASE1'|'OTHER'>('PHASE2');
+ const [syncBusy,setSyncBusy]=useState(false),[batches,setBatches]=useState<UniverseBatch[]>([]),[batchIndex,setBatchIndex]=useState(0),[screenView,setScreenView]=useState<'TOP'|'PHASE2'|'PHASE1'|'OTHER'|'MISSING'>('TOP');
  async function load(){try{
   const [r,s,u]=await Promise.all([
     fetch('/api/dashboard',{cache:'no-store'}),
@@ -38,10 +38,14 @@ export default function Home(){
   }catch{setMessage('Import impossible : réseau ou API indisponible')}
   finally{setSyncBusy(false)}
  }
- const visibleScans=scans.filter(s=>
+ const validScans=scans.filter(s=>typeof s.watchScore==='number' && s.watchStatus!=='UNAVAILABLE');
+ const topScans=[...validScans].sort((a,b)=>(b.watchScore??0)-(a.watchScore??0)||a.symbol.localeCompare(b.symbol)).slice(0,5);
+ const missingScans=scans.filter(s=>['NO_DATA','STALE_DATA','NO_BENCHMARK','STALE_BENCHMARK','INSUFFICIENT_HISTORY','INSUFFICIENT_BENCHMARK'].includes(s.signal));
+ const visibleScans=screenView==='TOP'?topScans:scans.filter(s=>
    screenView==='PHASE2'?['PHASE2_BREAKOUT','PHASE2_EXTENDED'].includes(s.signal):
    screenView==='PHASE1'?['PHASE1_LATE','PHASE1_BASE'].includes(s.signal):
-   !['PHASE2_BREAKOUT','PHASE2_EXTENDED','PHASE1_LATE','PHASE1_BASE'].includes(s.signal));
+   screenView==='MISSING'?missingScans.includes(s):
+   !['PHASE2_BREAKOUT','PHASE2_EXTENDED','PHASE1_LATE','PHASE1_BASE'].includes(s.signal) && !missingScans.includes(s));
  async function order(p:Position,side:'SELL'){
   if(!p.last)return;
   const q=Number(prompt('Quantité paper à vendre',String(p.qty)));
@@ -77,12 +81,14 @@ export default function Home(){
     <article><small>Formation d'une base</small><h2>{scans.filter(s=>s.signal==='PHASE1_BASE').length}</h2></article>
    </div>
    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
-    <button className={screenView==='PHASE2'?'active':''} onClick={()=>setScreenView('PHASE2')}>Phase 2 — entrées / étendues ({scans.filter(s=>['PHASE2_BREAKOUT','PHASE2_EXTENDED'].includes(s.signal)).length})</button>
-    <button className={screenView==='PHASE1'?'active':''} onClick={()=>setScreenView('PHASE1')}>Fin de phase 1 / bases ({scans.filter(s=>['PHASE1_LATE','PHASE1_BASE'].includes(s.signal)).length})</button>
-    <button className={screenView==='OTHER'?'active':''} onClick={()=>setScreenView('OTHER')}>Rejets et données manquantes ({scans.filter(s=>!['PHASE2_BREAKOUT','PHASE2_EXTENDED','PHASE1_LATE','PHASE1_BASE'].includes(s.signal)).length})</button>
+    <button className={screenView==='TOP'?'active':''} onClick={()=>setScreenView('TOP')}>Top 5 à surveiller ({topScans.length})</button>
+    <button className={screenView==='PHASE2'?'active':''} onClick={()=>setScreenView('PHASE2')}>Phase 2 confirmée / avancée ({scans.filter(s=>['PHASE2_BREAKOUT','PHASE2_EXTENDED'].includes(s.signal)).length})</button>
+    <button className={screenView==='PHASE1'?'active':''} onClick={()=>setScreenView('PHASE1')}>Bases de phase 1 ({scans.filter(s=>['PHASE1_LATE','PHASE1_BASE'].includes(s.signal)).length})</button>
+    <button className={screenView==='OTHER'?'active':''} onClick={()=>setScreenView('OTHER')}>Autres configurations ({scans.length-missingScans.length-scans.filter(s=>['PHASE2_BREAKOUT','PHASE2_EXTENDED','PHASE1_LATE','PHASE1_BASE'].includes(s.signal)).length})</button>
+    <button className={screenView==='MISSING'?'active':''} onClick={()=>setScreenView('MISSING')}>Données absentes / périmées ({missingScans.length})</button>
    </div>
    <div className="table"><table>
-    <thead><tr><th>Valeur</th><th>Dernier cours</th><th>MM30</th><th>Écart résistance</th><th>Pente MM30</th><th>Volume ×</th><th>Force relative</th><th>État</th><th>Raisons / contrôles</th></tr></thead>
+    <thead><tr><th>Valeur</th><th>Dernier cours</th><th>MM30</th><th>Écart résistance</th><th>Pente MM30</th><th>Volume ×</th><th>Force relative</th><th>Veille / cassure provisoire</th><th>Score veille</th><th>Signal hebdo</th><th>Raisons / contrôles</th></tr></thead>
     <tbody>
      {visibleScans.length?visibleScans.map(s=><tr key={s.id}>
       <td><Link className="instrument-link" href={'/instrument/'+encodeURIComponent(s.symbol)}>{s.name} ↗</Link><small>{s.symbol} · {s.last?.day??'Non importé'}</small></td>
@@ -92,15 +98,18 @@ export default function Home(){
       <td>{s.maSlope6Pct==null?'—':s.maSlope6Pct.toFixed(1)+' %'}</td>
       <td>{s.volumeRatio==null?'—':s.volumeRatio.toFixed(2)}</td>
       <td>{s.relativeStrength==null?'—':s.relativeStrength.toFixed(1)+' %'}</td>
+      <td>{s.provisional?'CASSURE EN COURS — attente clôture hebdo':s.watchStatus==='NEAR_RESISTANCE'?'PROCHE RÉSISTANCE':s.watchStatus==='WATCH'?'SURVEILLANCE':'—'}
+      <small>{s.distanceToResistancePct==null?'':(s.distanceToResistancePct>=0?'Écart : ':'Dépassement : ')+Math.abs(s.distanceToResistancePct).toFixed(1)+' %'}</small></td>
+      <td>{s.watchScore==null?'—':s.watchScore+' / 100'}</td>
       <td>{s.signal==='PHASE2_BREAKOUT'&&s.eligible?'PHASE 2 CONFIRMÉE':
         s.signal==='PHASE2_EXTENDED'?'PHASE 2 TROP AVANCÉE':
         s.signal==='PHASE1_LATE'?'FIN DE PHASE 1':
         s.signal==='PHASE1_BASE'?'BASE EN FORMATION':s.signal}
         <small>Score indicatif : {s.setupScore??0}/100</small></td>
       <td style={{maxWidth:300}}>{s.reasons?.length?s.reasons.map((reason,i)=><small key={i}>• {reason}</small>):'—'}</td>
-     </tr>):<tr><td colSpan={9}>Aucun titre dans cette catégorie avec les données disponibles.</td></tr>}
+     </tr>):<tr><td colSpan={11}>Aucun titre dans cette catégorie avec les données disponibles.</td></tr>}
     </tbody></table></div>
-   <p className="muted">Classement indicatif sur semaines clôturées et benchmark de même devise. Une cassure située à plus de 20 % au-dessus de la MM30 est classée « trop avancée ». Les bases de phase 1 ne sont jamais des signaux d’achat.</p>
+   <p className="muted">Classement indicatif sur semaines clôturées et benchmark de même devise. Le score de veille classe les configurations proches, sans représenter une probabilité ni autoriser un achat. Une cassure quotidienne en cours de semaine reste provisoire ; seule la clôture hebdomadaire peut confirmer la phase 2.</p>
    </section>:
   <section><h2>Portefeuille et ventes fictives</h2><div className="table"><table><thead><tr><th>Valeur</th><th>Quantité</th><th>PRU</th><th>Cours</th><th>Stop</th><th>Signal</th><th>Action</th></tr></thead><tbody>{data?.positions.length?data.positions.map(p=><tr key={p.id}><td>{p.name}<small>{p.symbol}</small></td><td>{p.qty}</td><td>{euro(p.avg)}</td><td>{euro(p.last)}</td><td>{euro(p.stop)}</td><td>{p.alert}</td><td><button disabled={!token||p.last==null} onClick={()=>void order(p,'SELL')}>Vendre paper</button></td></tr>):<tr><td colSpan={7}>Aucune position ouverte</td></tr>}</tbody></table></div>
   <h2>Historique paper</h2><div className="table"><table><thead><tr><th>Date</th><th>Instrument</th><th>Opération</th><th>Quantité</th><th>Prix</th></tr></thead><tbody>{data?.orders.map(o=><tr key={o.id}><td>{new Date(o.created_at).toLocaleString('fr-FR')}</td><td>{o.symbol}</td><td>{o.side}</td><td>{o.qty}</td><td>{euro(Number(o.price))}</td></tr>)}</tbody></table></div></section>}

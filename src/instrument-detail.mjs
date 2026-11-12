@@ -1,5 +1,6 @@
 import {aggregateWeeks,scanWeinstein} from './weinstein.mjs';
 import {explainSetup} from './weinstein-explain.mjs';
+import {assessWatch} from './weinstein-watch.mjs';
 
 /** Compute completed-week chart and decision metrics from stored OHLCV only. */
 export function buildInstrumentDetail(daily,benchmarkDaily,{asOf=new Date().toISOString().slice(0,10)}={}){
@@ -16,10 +17,11 @@ export function buildInstrumentDetail(daily,benchmarkDaily,{asOf=new Date().toIS
    close:x.close,volume:x.volume,ma30,volumeAvg10};
  });
  if(!week.length)return {weeks:[],indicators:null,levels:null,highlight:null,latestDay:null,
-  assessment:{signal:'INSUFFICIENT_HISTORY',eligible:false,reasons:['Aucune semaine clôturée disponible']}};
+  watch:null,assessment:{signal:'INSUFFICIENT_HISTORY',eligible:false,reasons:['Aucune semaine clôturée disponible']}};
  const raw=scanWeinstein(daily,{asOf,benchmarkDaily});
  const last=week.at(-1);
- const assessment=explainSetup({...raw,lastClose:last.close});
+ const assessment=explainSetup({...raw,lastClose:raw.lastCompletedClose});
+ const watch=assessWatch(daily,raw,{asOf});
  const enough=week.length>=40&&Number.isFinite(raw.priorHigh);
  const levels=enough?{
   resistance26:raw.priorHigh,
@@ -37,7 +39,7 @@ export function buildInstrumentDetail(daily,benchmarkDaily,{asOf=new Date().toIS
  }:isBreakout?{
   type:'LATEST_BREAKOUT',from:last.week,to:last.week
  }:null;
- return {weeks:week.slice(-156),indicators:raw,levels,highlight,
+ return {weeks:week.slice(-156),indicators:raw,levels,highlight,watch,
   latestDay:last.lastDay,assessment,
   explanation:'Les zones indiquent la configuration du dernier scan, pas une classification rétrospective des phases 1 à 4.'};
 }

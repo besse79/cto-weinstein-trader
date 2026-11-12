@@ -87,3 +87,16 @@ La migration SQL `003_french_large_caps.sql` ajoute 20 sociétés cotées à Par
 **Périmètre des tests :** API Yahoo simulée, import réel initial de six titres confirmé par l'utilisateur, mais la disponibilité des nouveaux symboles n'a pas encore été testée sur son WSL. Une place de cotation ou une devise incompatible bloque l'import concerné sans donner de faux signal.
 
 La sauvegarde vérifiée des sources et de PostgreSQL est exécutée par `deploy_local.py` **avant** la migration 003. Les données historiques déjà présentes restent en place.
+
+## Surveillance anticipée V2 : cassure quotidienne non confirmée
+
+Le scanner conserve deux lectures entièrement séparées :
+
+1. **Phase Weinstein confirmée** : les critères restent calculés uniquement sur les semaines ISO **terminées**. Un cours quotidien postérieur à la dernière semaine close ne peut jamais rendre un achat fictif éligible.
+2. **Score de veille quotidien** : note explicative 0 à 100, indépendante de la phase et **sans valeur de probabilité de gain**. Elle additionne des composantes plafonnées : proximité de résistance 26 semaines (30), cours supérieur à la MM30 (20), MM30 haussière (15), force relative (15), volume de la **dernière semaine terminée** (10), base préalable (10).
+
+Le statut `PROVISIONAL_BREAKOUT` apparaît uniquement si un **cours quotidien clôturé dans la semaine encore en cours** dépasse le plus haut des 26 **semaines antérieures entièrement terminées**. Cette détection ne valide aucune phase 2 et n'autorise aucun achat. `NEAR_RESISTANCE` signale un cours situé à 10 % ou moins sous la résistance.
+
+La page du scanner s'ouvre sur les **cinq meilleures configurations disposant de données fraîches** (tri par score de veille). Des onglets séparent les entrées phase 2, bases de phase 1, autres profils et **données absentes/périmées**. Aucune valeur sans historique suffisant ou benchmark valable n'obtient de score de veille.
+
+La fiche détaillée peut afficher une marque distincte du dernier cours quotidien et de la résistance de veille, **sans incorporer cette séance à la courbe des semaines closes**. La cotation n'est pas garantie comme temps réel : elle dépend du dernier import Yahoo manuel. Aucune collecte automatique, aucun ordre réel, capital paper 500 EUR conservé.
