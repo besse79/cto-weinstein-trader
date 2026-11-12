@@ -105,12 +105,16 @@ def main():
         # Persisted PostgreSQL volumes do not replay docker-entrypoint-initdb.d.
         # Always take a verified source + database backup BEFORE migrations.
         docker("up","-d","--wait","db")
-        migration = ROOT / "sql/migrations/002_currency_benchmarks.sql"
-        if not migration.is_file():
-            raise RuntimeError("Missing required schema migration 002")
-        docker("exec","-T","db","psql","-v","ON_ERROR_STOP=1",
-               "-U","trader","-d","trader",input_data=migration.read_bytes())
-        print("Idempotent benchmark schema migration: OK")
+        for number, filename in [
+            ("002", "002_currency_benchmarks.sql"),
+            ("003", "003_french_large_caps.sql"),
+        ]:
+            migration = ROOT / "sql/migrations" / filename
+            if not migration.is_file():
+                raise RuntimeError("Missing required schema migration " + number)
+            docker("exec","-T","db","psql","-v","ON_ERROR_STOP=1",
+                   "-U","trader","-d","trader",input_data=migration.read_bytes())
+            print("Idempotent schema migration " + number + ": OK")
         # Import Yahoo only via an authenticated, explicit user action. No scheduled import.
         docker("up","-d","--wait","web")
         url=f"http://127.0.0.1:{PORT}/api/dashboard"

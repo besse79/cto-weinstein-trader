@@ -1,5 +1,6 @@
 import {pool} from '../../../lib/db';
 import {scanWeinstein} from '../../../src/weinstein.mjs';
+import {explainSetup} from '../../../src/weinstein-explain.mjs';
 export const dynamic='force-dynamic';
 
 const BENCHMARK_BY_CURRENCY:Record<string,string>={EUR:'EXSA.DE',USD:'SPY'};
@@ -29,16 +30,20 @@ export async function GET(){
    const benchmarkLag=benchmarkLast?.day?(now.getTime()-Date.parse(benchmarkLast.day+'T12:00:00Z'))/86400000:Infinity;
    const noBenchmark=!comparison?.length;
    const staleBenchmark=benchmarkLag>10;
-   const signal=!last?'NO_DATA':stale?'STALE_DATA':noBenchmark?'NO_BENCHMARK':staleBenchmark?'STALE_BENCHMARK':scan.signal;
+   const explain=explainSetup({...scan,lastClose:last?.close});
+   const status=!last?'NO_DATA':stale?'STALE_DATA':noBenchmark?'NO_BENCHMARK':staleBenchmark?'STALE_BENCHMARK':null;
    results.push({
     id:i.id,symbol:i.symbol,name:i.name,currency:i.currency,
     last:last?{day:last.day,close:last.close}:null,
-    ...scan,benchmark:benchmark??null,
-    eligible:scan.eligible&&!stale&&!noBenchmark&&!staleBenchmark,
-    stage:stale||noBenchmark||staleBenchmark?'DATA_UNAVAILABLE':scan.stage,
-    stageRank:stale||noBenchmark||staleBenchmark?99:(scan.stageRank??98),
-    setupScore:stale||noBenchmark||staleBenchmark?0:(scan.setupScore??0),
-    signal
+    ...scan,...explain,benchmark:benchmark??null,
+    eligible:!!explain.eligible&&!status,
+    stage:status?'DATA_UNAVAILABLE':explain.stage,
+    stageRank:status?99:explain.stageRank,
+    setupScore:status?0:explain.setupScore,
+    signal:status??explain.signal,
+    reasons:status?[status==='NO_DATA'?'Aucun historique importé':
+      status==='STALE_DATA'?'Cours du titre périmé':
+      status==='NO_BENCHMARK'?'Benchmark absent':'Benchmark périmé']:explain.reasons
    });
   }
   results.sort((a,b)=>a.stageRank-b.stageRank || b.setupScore-a.setupScore || a.symbol.localeCompare(b.symbol));

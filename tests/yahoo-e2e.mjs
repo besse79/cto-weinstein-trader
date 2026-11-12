@@ -33,6 +33,19 @@ for(const x of scanner.results){
  assert.notEqual(x.signal,'NO_DATA');
  assert.notEqual(x.signal,'STALE_DATA');
 }
+const universe=await (await fetch(base+'/api/universe')).json();
+assert.equal(universe.count,6);
+assert.equal(universe.batches[0].symbols.length,6);
+assert.ok(universe.batches[0].instruments.every(i=>i.bars>600));
+r=await post('/api/market/sync',{symbols:['AC.PA','LR.PA']});
+assert.equal(r.status,200,'Explicit manual 2-symbol batch must work');
+assert.equal(r.json.results.length,2);
+r=await post('/api/market/sync',{symbols:['AC.PA','BAD.PA']});
+assert.equal(r.status,404,'Unknown member blocks entire batch');
+r=await post('/api/market/sync',{symbols:['AC.PA','AC.PA']});
+assert.equal(r.status,400,'Duplicate symbols must be refused');
+r=await post('/api/market/sync',{symbols:Array(7).fill('AC.PA')});
+assert.equal(r.status,400,'No more than six tickers per request');
 const dashboard=await (await fetch(base+'/api/dashboard')).json();
 assert.equal(dashboard.mode,'PAPER');
 assert.equal(dashboard.initial,500);
