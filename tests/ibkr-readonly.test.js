@@ -34,6 +34,7 @@ test('rejects empty responses and invalid timestamps',()=>{
 test('IBKR historical metadata matches allowlisted Paris and US symbols',()=>{
  assert.deepEqual(assertIbkrInstrument({symbol:'AC'},'AC.PA'),{appSymbol:'AC.PA',brokerSymbol:'AC'});
  assert.deepEqual(assertIbkrInstrument({symbol:'SPY'},'SPY'),{appSymbol:'SPY',brokerSymbol:'SPY'});
+ assert.deepEqual(assertIbkrInstrument({symbol:'EXSA'},'EXSA.DE'),{appSymbol:'EXSA.DE',brokerSymbol:'EXSA'});
 });
 test('IBKR history rejects absent or incorrect returned symbol',()=>{
  for(const response of [{},{symbol:'AAPL'},{symbol:'AC.PA'},{symbol:''}]) {
