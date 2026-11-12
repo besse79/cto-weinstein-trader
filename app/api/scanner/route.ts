@@ -25,15 +25,23 @@ export async function GET(){
    const scan=scanWeinstein(data,{asOf,benchmarkDaily:comparison??[]});
    const lag=last?(now.getTime()-Date.parse(last.day+'T12:00:00Z'))/86400000:Infinity;
    const stale=lag>10;
+   const benchmarkLast=comparison?.at(-1) as {day?:string}|undefined;
+   const benchmarkLag=benchmarkLast?.day?(now.getTime()-Date.parse(benchmarkLast.day+'T12:00:00Z'))/86400000:Infinity;
    const noBenchmark=!comparison?.length;
-   const signal=!last?'NO_DATA':stale?'STALE_DATA':noBenchmark?'NO_BENCHMARK':scan.signal;
+   const staleBenchmark=benchmarkLag>10;
+   const signal=!last?'NO_DATA':stale?'STALE_DATA':noBenchmark?'NO_BENCHMARK':staleBenchmark?'STALE_BENCHMARK':scan.signal;
    results.push({
     id:i.id,symbol:i.symbol,name:i.name,currency:i.currency,
     last:last?{day:last.day,close:last.close}:null,
     ...scan,benchmark:benchmark??null,
-    eligible:scan.eligible&&!stale&&!noBenchmark,signal
+    eligible:scan.eligible&&!stale&&!noBenchmark&&!staleBenchmark,
+    stage:stale||noBenchmark||staleBenchmark?'DATA_UNAVAILABLE':scan.stage,
+    stageRank:stale||noBenchmark||staleBenchmark?99:(scan.stageRank??98),
+    setupScore:stale||noBenchmark||staleBenchmark?0:(scan.setupScore??0),
+    signal
    });
   }
+  results.sort((a,b)=>a.stageRank-b.stageRank || b.setupScore-a.setupScore || a.symbol.localeCompare(b.symbol));
   return Response.json({asOf,benchmarkByCurrency:BENCHMARK_BY_CURRENCY,results,
    note:'Weekly Weinstein signals use completed ISO weeks and same-currency benchmarks. No broker orders.'});
  }catch(e){return Response.json({error:'Scanner unavailable',detail:String(e)},{status:503})}
