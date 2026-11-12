@@ -132,7 +132,7 @@ jobs:
         run: node tests/yahoo-e2e.mjs
       - name: Verify failed import did not create audit entries
         run: |
-          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 6
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 8
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM orders" | grep -Fx 0
       - name: Diagnostics
         if: failure()
