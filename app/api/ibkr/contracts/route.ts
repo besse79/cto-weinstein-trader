@@ -17,7 +17,7 @@ export async function GET(req:NextRequest){
   return Response.json({error:'Invalid instrument'},{status:400});
  const found=await pool.query('SELECT id,symbol,name,currency FROM instruments WHERE symbol=$1',[appSymbol]);
  if(!found.rows.length)return Response.json({error:'Instrument not in watchlist'},{status:404});
- const shortSymbol=appSymbol.replace(/\.PA$/,'');
+ const shortSymbol=appSymbol.replace(/\.(PA|DE)$/,'');
  const u=new URL(base+'/iserver/secdef/search');
  u.searchParams.set('symbol',shortSymbol);
  try{
@@ -31,7 +31,7 @@ export async function GET(req:NextRequest){
      symbol:String(x.symbol||'').slice(0,32),
      companyName:String(x.companyName||'').slice(0,120),
      description:String(x.description||'').slice(0,100),
-     sections:Array.isArray(x.sections)?x.sections.filter(s=>s.secType==='STK').map(s=>({secType:'STK',exchange:String(s.exchange||'').slice(0,100)})):[]
+     sections:Array.isArray(x.sections)?x.sections.filter((s:Record<string,unknown>)=>s.secType==='STK').map((s:Record<string,unknown>)=>({secType:'STK',exchange:String(s.exchange||'').slice(0,100)})):[]
    }));
   return Response.json({provider:'IBKR',mode:'READ_ONLY',instrument:found.rows[0],
     query:shortSymbol,candidates,needsManualVerification:true,

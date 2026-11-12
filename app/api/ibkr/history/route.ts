@@ -1,4 +1,4 @@
-import {gatewayBase,parseIbkrHistory} from '../../../../lib/ibkr-readonly.mjs';
+import {gatewayBase,parseIbkrHistory,assertIbkrInstrument} from '../../../../lib/ibkr-readonly.mjs';
 import {NextRequest} from 'next/server';
 import {authorized} from '../../../../lib/auth';
 import {pool} from '../../../../lib/db';
@@ -31,6 +31,7 @@ export async function POST(req:NextRequest){
   const json=await response.json();
   if(!Array.isArray(json.data)||json.data.length<1||json.data.length>1000)
    throw new Error('Unexpected IBKR historical data');
+  assertIbkrInstrument(json,symbol);
   const bars=parseIbkrHistory(json); /* validated, sorted and duplicate-free OHLCV */
   const db=await pool.connect();let begun=false;
   try{
