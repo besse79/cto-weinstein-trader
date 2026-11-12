@@ -99,32 +99,32 @@ jobs:
       - name: Remove ephemeral test containers and volumes
         if: always()
         run: docker compose down --volumes --remove-orphans
-  ibkr-mock-e2e:
+  yahoo-mock-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 16
     env:
-      POSTGRES_PASSWORD: mock-db-only-password
-      APP_TOKEN: mock-app-only-token
-      IBKR_GATEWAY_URL: http://host.docker.internal:5055
-      IBKR_CONIDS_JSON: '{"AC.PA":1001,"SPY":1002,"EXSA.DE":1003}'
+      POSTGRES_PASSWORD: yahoo-test-only
+      APP_TOKEN: yahoo-test-token
+      CI: 'true'
+      YAHOO_TEST_BASE_URL: http://host.docker.internal:5056
       TEST_BASE_URL: http://127.0.0.1:3010
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Start isolated local read-only IBKR mock
+      - name: Start isolated fake Yahoo server
         run: |
-          node tests/mock-ibkr-gateway.mjs > /tmp/ibkr-mock.log 2>&1 &
+          node tests/mock-yahoo-server.mjs > /tmp/yahoo-mock.log 2>&1 &
           for i in $(seq 1 20); do
-            if curl -fsS -X POST http://127.0.0.1:5055/v1/api/iserver/auth/status >/dev/null; then exit 0; fi
+            if curl -fsS 'http://127.0.0.1:5056/v8/finance/chart/AC.PA?range=5y&interval=1d' >/dev/null; then exit 0; fi
             sleep 1
           done
-          cat /tmp/ibkr-mock.log
+          cat /tmp/yahoo-mock.log
           exit 1
-      - name: Boot app with mock gateway and clean PostgreSQL
+      - name: Start app with ephemeral PostgreSQL
         run: docker compose up -d --wait
-      - name: Wait for app
+      - name: Wait for application readiness
         run: |
           for i in $(seq 1 90); do
             if curl -fsS --max-time 3 http://127.0.0.1:3010/ >/dev/null; then exit 0; fi
@@ -132,14 +132,18 @@ jobs:
           done
           docker compose logs --tail=100
           exit 1
-      - name: Test IBKR history-to-PostgreSQL pipeline
-        run: node tests/mock-ibkr-e2e.mjs
-      - name: Diagnostic logs on failure
+      - name: Verify Yahoo import, currency benchmarks and refusal on invalid ticker
+        run: node tests/yahoo-e2e.mjs
+      - name: Verify failed import did not create audit entries
+        run: |
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 6
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM orders" | grep -Fx 0
+      - name: Diagnostics
         if: failure()
         run: |
-          cat /tmp/ibkr-mock.log
+          cat /tmp/yahoo-mock.log
           docker compose logs --tail=150
-      - name: Remove ephemeral test containers
+      - name: Remove test volumes
         if: always()
         run: docker compose down --volumes --remove-orphans
   wsl-installer-smoke:
