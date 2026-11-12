@@ -44,10 +44,6 @@ def ensure_env():
     values = [
         "POSTGRES_PASSWORD="+secrets.token_urlsafe(36),
         "APP_TOKEN="+secrets.token_urlsafe(48),
-        "IBKR_GATEWAY_URL=",
-        "IBKR_CONIDS_JSON={}",
-        "IBKR_SYNC_SYMBOLS=",
-        "PAPER_AUTOMATION_ENABLED=false",
     ]
     with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as fp:
         fp.write("\n".join(values)+"\n")
@@ -115,7 +111,7 @@ def main():
         docker("exec","-T","db","psql","-v","ON_ERROR_STOP=1",
                "-U","trader","-d","trader",input_data=migration.read_bytes())
         print("Idempotent benchmark schema migration: OK")
-        # Never start the opt-in automation profile. No real trading endpoints exist.
+        # Import Yahoo only via an authenticated, explicit user action. No scheduled import.
         docker("up","-d","--wait","web")
         url=f"http://127.0.0.1:{PORT}/api/dashboard"
         import time

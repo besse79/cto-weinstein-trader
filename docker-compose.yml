@@ -26,29 +26,13 @@ services:
     environment:
       DATABASE_URL: postgres://trader:${POSTGRES_PASSWORD}@db:5432/trader
       APP_TOKEN: ${APP_TOKEN:?set APP_TOKEN}
-      IBKR_GATEWAY_URL: ${IBKR_GATEWAY_URL:-}
-      IBKR_CONIDS_JSON: '${IBKR_CONIDS_JSON:-{}}'
+      CI: ${CI:-false}
+      YAHOO_TEST_BASE_URL: ${YAHOO_TEST_BASE_URL:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
-  paper-scheduler:
-    profiles: ["automation"]
-    image: node:22-alpine
-    restart: unless-stopped
-    working_dir: /app
-    command: node scripts/scheduler.mjs
-    volumes:
-      - ./:/app:ro
-    environment:
-      APP_TOKEN: ${APP_TOKEN:?set APP_TOKEN}
-      PAPER_API_URL: http://web:3000
-      PAPER_AUTOMATION_ENABLED: ${PAPER_AUTOMATION_ENABLED:-false}
-      IBKR_SYNC_SYMBOLS: ${IBKR_SYNC_SYMBOLS:-}
-    depends_on:
-      web:
-        condition: service_started
 volumes:
   pgdata:
   node_modules:
