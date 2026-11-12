@@ -4,7 +4,6 @@ import {useMemo,useState} from 'react';
 type Candle={week:string;lastDay:string;open:number;high:number;low:number;close:number;volume:number;ma30:number|null;volumeAvg10:number|null};
 type Levels={resistance26:number;support8:number;ma30:number;baseHigh:number;baseLow:number}|null;
 type Highlight={type:string;from:string;to:string}|null;
-const money=(x:number)=>x.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 const num=(x:number)=>x.toLocaleString('fr-FR',{maximumFractionDigits:0});
 const WIDTH=1020,PRICE_H=385,VOL_H=150,LEFT=70,RIGHT=30;
 
@@ -37,6 +36,7 @@ export default function WeeklyPriceChart({series,levels,highlight,currency='EUR'
  const active=hover===null?data.length-1:Math.max(0,Math.min(hover,data.length-1));
  const latest=data[active];
  const label=currency==='EUR'?'€':currency;
+ const fmtPrice=(n:number)=>n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+label;
  return <div className="weekly-chart">
   <div className="chart-toolbar">
    <strong>Prix hebdomadaire · {data.length} semaines clôturées</strong>
@@ -70,14 +70,14 @@ export default function WeeklyPriceChart({series,levels,highlight,currency='EUR'
     {data.filter((_,i)=>i%Math.max(1,Math.floor(data.length/9))===0).map(d=><text key={d.week} x={chart.x(data.indexOf(d))} y={PRICE_H-7} textAnchor="middle" fill="#96aabe" fontSize="12">{d.week.slice(0,7)}</text>)}
    </svg>
   </div>
-  <div className="chart-inspector"><strong>{latest.lastDay}</strong><span>Clôture : {money(latest.close)}</span><span>MM30 : {latest.ma30==null?'—':money(latest.ma30)}</span><span>Plus haut : {money(latest.high)}</span><span>Plus bas : {money(latest.low)}</span></div>
+  <div className="chart-inspector"><strong>{latest.lastDay}</strong><span>Clôture : {fmtPrice(latest.close)}</span><span>MM30 : {latest.ma30==null?'—':fmtPrice(latest.ma30)}</span><span>Plus haut : {fmtPrice(latest.high)}</span><span>Plus bas : {fmtPrice(latest.low)}</span></div>
   <div className="chart-volume-heading"><strong>Volume hebdomadaire</strong><span>Colonnes : titres négociés · ligne : moyenne précédente 10 sem.</span></div>
   <div className="chart-scroll">
    <svg viewBox={'0 0 '+WIDTH+' '+VOL_H} role="img" aria-label="Volumes hebdomadaires et moyenne des dix semaines précédentes" className="chart-svg">
     {data.map((d,i)=>{const bw=Math.max(2,(WIDTH-LEFT-RIGHT)/data.length*.72);
      return <rect key={d.week} x={chart.x(i)-bw/2} y={chart.volumeY(d.volume)} width={bw} height={VOL_H-30-chart.volumeY(d.volume)} fill={d.close>=d.open?'#43ad90':'#a56971'} opacity={i===active?1:.75}/>;
     })}
-    <path d={data.map((d,i)=>d.volumeAvg10==null?'':(i?'L':'M')+chart.x(i).toFixed(2)+' '+chart.volumeY(d.volumeAvg10).toFixed(2)).join(' ')} fill="none" stroke="#f1bd72" strokeWidth="2"/>
+    <path d={data.map((d,i)=>({d,i})).filter(p=>p.d.volumeAvg10!==null).map((p,i)=>(i?'L':'M')+chart.x(p.i).toFixed(2)+' '+chart.volumeY(p.d.volumeAvg10 as number).toFixed(2)).join(' ')} fill="none" stroke="#f1bd72" strokeWidth="2"/>
     <line x1={chart.x(active)} x2={chart.x(active)} y1="8" y2={VOL_H-30} stroke="#adc2de" strokeOpacity=".5" strokeDasharray="3 4"/>
     <text x={LEFT-9} y="18" textAnchor="end" fill="#a6bacb" fontSize="12">{num(chart.maxVolume)}</text>
     <text x={LEFT-9} y={VOL_H-26} textAnchor="end" fill="#a6bacb" fontSize="12">0</text>
