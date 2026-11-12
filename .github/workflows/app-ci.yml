@@ -103,7 +103,7 @@ jobs:
       POSTGRES_PASSWORD: mock-db-only-password
       APP_TOKEN: mock-app-only-token
       IBKR_GATEWAY_URL: http://host.docker.internal:5055
-      IBKR_CONIDS_JSON: '{"AC.PA":1001,"SPY":1002}'
+      IBKR_CONIDS_JSON: '{"AC.PA":1001,"SPY":1002,"EXSA.DE":1003}'
       TEST_BASE_URL: http://127.0.0.1:3010
     steps:
       - uses: actions/checkout@v4
