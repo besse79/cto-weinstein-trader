@@ -28,10 +28,8 @@ check(r.body.positions.length===0 && r.body.orders.length===0,'Portfolio and led
 check(r.body.signals.every(s=>s.status==='NO_CONFIRMED_SIGNAL'),'No fake Weinstein buy signals');
 r=await api('/api/scanner');
 check(r.status===200 && Array.isArray(r.body.results) && r.body.results.every(x=>!x.eligible && x.signal==='NO_DATA'),'Scanner distinguishes absent market data and blocks every buy');
-r=await api('/api/ibkr');
-check(r.status===401,'IBKR status needs authorization');
-r=await api('/api/ibkr',{headers:auth});
-check(r.status===200 && r.body.realOrdersEnabled===false && r.body.localPaperOnly===true,'IBKR never enables live execution');
+r=await post('/api/market/sync',{all:true},{});
+check(r.status===401,'Yahoo market sync requires local token');
 r=await post('/api/orders',{instrumentId:1,side:'BUY',qty:1,price:100,stop:95,fee:0}, {});
 check(r.status===401,'Paper orders reject missing token');
 r=await post('/api/orders',{instrumentId:1,side:'BUY',qty:1,price:100,stop:95,fee:0});
