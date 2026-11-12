@@ -21,7 +21,7 @@ const server=http.createServer((req,res)=>{
    calls++;
    if(!['1001','1002'].includes(path.searchParams.get('conid')))return json(404,{error:'unrecognized conid'});
    if(path.searchParams.get('bar')!=='1d')return json(400,{error:'bar must be daily'});
-   return json(200,{symbol:path.searchParams.get('conid')==='1001'?'AC.PA':'SPY',data:bars});
+   return json(200,{symbol:path.searchParams.get('conid')==='1001'?'AC':'SPY',data:bars});
  }
  return json(404,{error:'unsupported endpoint'});
 });
