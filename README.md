@@ -1,108 +1,61 @@
-# CTO Weinstein Trader
+# CTO Weinstein Trader — Yahoo Finance / Paper Trading
 
-Application web de simulation de trading (CTO) selon Stan Weinstein.
+Application Next.js et PostgreSQL d'analyse technique selon Stan Weinstein. Portefeuille fictif de **500 €**, aucune connexion bancaire ou ordre réel.
 
-## Statut
-- Branche `develop` : intégration expérimentale Next.js / PostgreSQL / API.
-- Capital initial local : **500 EUR**.
-- Ordres exclusivement **PAPER** : aucune opération d'exécution chez IBKR.
-- IBKR : contrôle d'authentification local en **lecture seule** ; récupération des cours non implémentée.
-- Écran 1 : liste de surveillance, achats bloqués (scanner Weinstein non validé).
-- Écran 2 : positions, alertes de stop et ventes fictives manuelles.
-- Stop initial enregistré ; break-even / trailing calculables dans le module de risque mais **non encore automatisés dans la base**.
-- Pas de gestion de change pour les titres USD ; seuls instruments EUR autorisés dans l'API pour l'instant.
+## Installer et mettre à jour sous WSL
 
-## Lancer localement
-Prérequis : Docker et Docker Compose.
+Prérequis : WSL Ubuntu, Git et Docker Desktop avec intégration WSL.
 
-1. Copier `.env.example` vers `.env` et y générer des secrets uniques pour `POSTGRES_PASSWORD` et `APP_TOKEN`.
-2. Exécuter `docker compose up -d`.
-3. Ouvrir `http://localhost:3010`.
+Sur une installation existante :
 
-La base est initialisée lors de la première création du volume PostgreSQL. Ne jamais supprimer le volume `pgdata` sans sauvegarde vérifiée ; la restauration n'est pas encore automatisée dans ce dépôt.
+```bash
+cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py
+```
+
+URL locale : http://localhost:3010
+
+L'installateur vérifie Docker et la sauvegarde préalable (sources et PostgreSQL), applique les migrations nécessaires, démarre PostgreSQL et Next.js et vérifie le mode paper. Restaurer une sauvegarde via `python3 restore.py <chemin-de-sauvegarde>` (vérification) ; `--apply` est une action destructive avec confirmation explicite.
+
+## Historique de marché — source Yahoo Finance
+
+Le panneau « Trades du matin » propose un **import manuel** de cinq années de données quotidiennes OHLCV pour l'ensemble des six instruments connus, benchmarks inclus :
+
+- Actions EUR : `AC.PA` (Accor), `SU.PA`, `LR.PA`, `SAF.PA`.
+- Benchmark EUR : `EXSA.DE` (ETF STOXX Europe 600 en EUR).
+- Benchmark USD : `SPY` (ETF S&P 500 en USD ; uniquement benchmark).
+
+Pour importer : saisir le **APP_TOKEN local** présent dans `.env` (ne jamais le publier), puis cliquer « Importer les historiques Yahoo (5 ans) ». L'application conserve l'historique dans PostgreSQL, calcule la moyenne mobile hebdomadaire 30 semaines, le volume et la force relative pour les **semaines clôturées**. Aucune transaction n'est générée par un import.
+
+### Fiabilité et restrictions
+
+- L'endpoint Yahoo Chart est **non officiel**, gratuit dans les conditions où il est accessible, sans garantie ni contrat de service. Yahoo peut renvoyer 401/429, interrompre ou modifier son format.
+- Les conditions générales Yahoo restreignent l'accès automatisé aux données sans autorisation préalable. Il revient à l'utilisateur de vérifier ses droits d'utilisation ; aucun contournement de contrôles, rotation de proxy ou scraping intensif n'est fourni. **L'import est manuel et non planifié.**
+- Une synchronisation de groupe est **atomique** : si un instrument, une devise, une cotation ou une connexion ne passe pas les contrôles, rien n'est écrit. Les métadonnées d'import sont enregistrées dans `market_sync_audit`.
+- Vérification du symbole, de la devise, des dates et des volumes, de la cohérence haut/bas/ouverture/clôture ; exclusion des séances en cours et rejet des historiques périmés de plus de dix jours. Ce contrôle ne garantit pas la justesse économique des cotations.
+- Les données Yahoo ne constituent pas un flux d'exécution de courtier. Les dividendes, ajustements de splits et frais doivent être validés avant un backtest de performance sérieux.
+- En cas d'indisponibilité de Yahoo ou de conditions incompatibles, prévoir un import de fichier ou un fournisseur sous licence. L'architecture PostgreSQL et le scanner restent indépendants du fournisseur.
+
+## Scanner et risque
+
+- Scanner : MM30 hebdomadaire montante ; cassure des 26 semaines précédentes ; volume au moins 1,5× sa moyenne ; force relative positive sur 26 semaines contre le benchmark de même devise.
+- Les signaux restent des **observations**, pas des ordres. Aucune transaction d'achat automatisée.
+- Simulation des stops sur les barres quotidiennes clôturées, y compris gaps et glissement fictif, sans garantie de réalisme des exécutions.
+- Pas de conversion FX pour les titres en USD : pas d'achat paper USD avant implémentation du change. Le capital demeure en EUR et fixé à 500 €.
 
 ## Tests
-- `npm test` : règles de risque, break-even, stop.
-- `npm run typecheck` : TypeScript.
-- `npm run build` : Next.js.
-- Le workflow GitHub Actions exécute ces commandes sur chaque push dans `develop`.
 
-## Limites et garde-fous
-- L'import OHLCV est réservé à un jeton APP_TOKEN local et les données ne constituent pas encore une source IBKR certifiée.
-- Les achats restent manuels via API pour les tests ; il n'y a pas de signal Weinstein officiellement validé.
-- Pas d'exécution automatique de stop ni de simulation intraday des gaps.
-- Les cours manquants/périmés bloquent les transactions fictives.
-- Pas d'ordres réels, pas de clés de courtier dans le dépôt.
-- Dépôt public : ne jamais y placer de jetons, identifiants ou données privées.
+```bash
+npm install
+npm audit --audit-level=high
+npm test
+npm run typecheck
+npm run build
+```
 
+GitHub Actions vérifie également la base PostgreSQL, les transactions paper, les stops, l'installation/restauration Docker et un serveur **Yahoo simulé**, sans solliciter Yahoo pendant les tests.
 
-## Scanner Weinstein (développement)
-- `GET /api/scanner` agrège l'OHLCV quotidien en semaines ISO clôturées.
-- Critères proposés (compléments opérationnels à Weinstein) : MM30 montante, cassure au-dessus des 26 semaines précédentes, volume >= 1,5 fois sa moyenne sur dix semaines, force relative positive sur 26 semaines contre SPY.
-- Minimum 40 semaines historiques et benchmark `SPY`. Cotations de plus de 10 jours : statut `STALE_DATA`.
-- `PHASE2_BREAKOUT` reste un **signal de surveillance**, pas un ordre ou une promesse de performance.
-- Pas de cotations fictives préchargées : scanner vide tant que l'import n'a pas été réalisé.
+## Sécurité
 
-## Données IBKR
-- `POST /api/ibkr/history` avec jeton `x-app-token` et corps `{"symbol":"AC.PA"}`.
-- Requiert `IBKR_GATEWAY_URL` pointant vers une gateway **locale** et `IBKR_CONIDS_JSON` (mapping de symboles vers les vrais identifiants de contrats IBKR validés par l'utilisateur).
-- Exemple `IBKR_CONIDS_JSON={"AC.PA":123456}` (identifiant fictif pour illustrer la syntaxe ; ne pas le reprendre).
-- Lit **uniquement** `GET /iserver/marketdata/history`. N'envoie aucun ordre au courtier. Compte et droits de données de marché requis chez IBKR.
-- La certification TLS de la gateway doit être établie correctement. Ne pas désactiver la validation TLS en production.
-- Respecter les limites documentées d'IBKR : 10 requêtes/s ou 50 requêtes/min pour l'historique (septembre 2026). L'import s'effectue pour un instrument par demande.
+La clé `APP_TOKEN` reste uniquement dans le fichier local `.env`, jamais dans GitHub. Le site est publié sur `127.0.0.1:3010` uniquement. Il n'existe aucune route vers un courtier ni aucun composant d'exécution d'ordres réels. L'application n'envoie pas d'identifiants à Yahoo.
 
-## Stops paper
-- `POST /api/stops` (avec `x-app-token`) actualise les stops selon les dernières **clôtures disponibles**.
-- Break-even à +1,5R et stop suiveur à +2R. Un stop ne redescend jamais.
-- Dépassement de stop : statut `SELL_REVIEW`, **pas une exécution fictive automatique** ; il manque un moteur d'exécution intraday avec gestion de l'ordre des événements, des gaps et des frais.
-- Aucun processus de réconciliation périodique n'est actuellement planifié : cet endpoint doit encore être appelé manuellement ou par un ordonnanceur sécurisé.
-
-
-## Orchestration paper (opt-in, non activée)
-- Module `src/paper-cycle.mjs` : synchronise séquentiellement chaque symbole déclaré dans `IBKR_SYNC_SYMBOLS`, **puis seulement en cas de succès complet**, appelle `POST /api/stops`.
-- En cas d'échec réseau, de donnée IBKR non vérifiée ou de mapping absent, **aucune exécution fictive de stops n'est déclenchée**. Les incidents doivent être consultés dans les journaux.
-- Module `scripts/scheduler.mjs` : déclenche une tentative les jours ouvrés à 08:00 (fuseau Europe/Paris), au maximum une fois par jour par processus. L'heure correspond à une analyse des dernières données disponibles, pas à une garantie de données de la veille.
-- Le service Docker est derrière le profil `automation`, **exclu du démarrage par défaut**. `PAPER_AUTOMATION_ENABLED=false` par défaut.
-- Activation volontaire seulement après la validation réelle de la gateway locale IBKR, de ses droits de données et du mapping réel de tous les symboles : `docker compose --profile automation up -d`, avec `PAPER_AUTOMATION_ENABLED=true` et `IBKR_SYNC_SYMBOLS` définis dans `.env`.
-- **Attention** : les données de marché réelles, les éventuels jours fériés, les divergences de cotation et l'import IBKR n'ont pas été validés sur un compte utilisateur. Ne pas activer ce service avant ces validations. Aucun ordre de courtier n'est envoyé.
-- La tâche n'est pas garantie pendant les arrêts du conteneur ; un déclenchement manqué n'est pas rattrapé automatiquement.
-
-
-## Validation de la passerelle IBKR (11/11/2026)
-- L'URL de base Client Portal Gateway est normalisée en `/v1/api`, selon la documentation officielle IBKR.
-- Configuration attendue : `IBKR_GATEWAY_URL=https://host.docker.internal:5000` (si la gateway locale écoute sur ce port et que son certificat TLS est approuvé par le conteneur).
-- Les symboles doivent être associés à des `conid` IBKR authentiques dans `IBKR_CONIDS_JSON`, **jamais** à un identifiant inventé.
-- Le connecteur ne contacte que le statut d'authentification et `GET /iserver/marketdata/history`. Les routes de transmission d'ordres IBKR ne sont pas utilisées.
-- Les historiques refusent les bougies futures, incohérentes, dupliquées et les volumes invalides.
-- Le job GitHub `ibkr-mock-e2e` vérifie le parcours complet gateway HTTP simulée → Next.js → PostgreSQL → scanner. Cette simulation **ne prouve pas** le bon fonctionnement des droits de marché ou de la session IBKR réelle.
-- L'authentification réelle et les abonnements de données sont à confirmer localement, sans communiquer de secrets dans le dépôt.
-
-
-## Contrôle IBKR dans la page « Trades du matin »
-- Dans l'application locale : renseigner **APP_TOKEN local** dans le champ « Jeton local », puis cliquer sur « Tester la connexion IBKR ».
-- L'API interroge `POST /v1/api/iserver/auth/status` conformément à la documentation actuelle d'IBKR.
-- La recherche de contrats (`GET /v1/api/iserver/secdef/search?symbol=...`) renvoie des **candidats non validés** : vérifier le titre, la place de cotation, la devise et le type d'instrument avant toute association à un conid. Aucune affectation automatique.
-- Une fois les vrais conids validés, configurer `IBKR_CONIDS_JSON` **uniquement dans `.env` local**, jamais sur GitHub, puis redémarrer les conteneurs.
-- Le bouton « Importer l'historique vérifié » n'est actif que si le diagnostic d'authentification réussit. L'API refuse les instruments absents de la liste autorisée.
-- IBKR Client Portal Gateway doit être installé et authentifié localement et son certificat TLS doit être approuvé. Un abonnement market data peut être nécessaire.
-- Le statut « NO_DATA » signifie qu'aucun historique n'a été importé ; « STALE_DATA » correspond à un cours importé mais périmé.
-- Pour mettre à jour l'installation WSL sans écraser la base : `cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py`. Le script vérifie la sauvegarde avant redémarrage.
-
-
-## Premier diagnostic IBKR sur le poste WSL
-1. Après validation CI, mettre le projet à jour : `cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py`.
-2. Lancer `python3 scripts/diagnose_ibkr.py`. Aucun identifiant bancaire n'est demandé ; le script contrôle le mode paper, le paramétrage local et l'accès au port de la gateway.
-3. Télécharger la Client Portal Gateway depuis les pages officielles IBKR et l'exécuter **sur la même machine** (Java requis). Authentifier la session dans un navigateur sur `https://localhost:5000`, avec les identifiants **directement sur le site local IBKR**, jamais dans l'application ni dans GitHub.
-4. Dans `.env` local seulement, configurer `IBKR_GATEWAY_URL=https://host.docker.internal:5000`. La gateway utilise normalement un certificat non reconnu : établir une relation de confiance TLS explicite dans l'environnement du conteneur avant de synchroniser des données ; ne pas désactiver globalement les vérifications TLS.
-5. Sur la page Trades du matin, entrer le jeton APP_TOKEN local, tester l'état IBKR et rechercher les contrats. Vérifier manuellement les conids et les places de marché avant de les placer dans `IBKR_CONIDS_JSON` local.
-6. **Ne pas activer le profil automation** avant validation des droits d'accès aux cotations, de la fraîcheur et des frais applicables.
-
-La session brokerage peut expirer : IBKR documente un timeout après quelques minutes sans requête, ainsi que des reconnexions quotidiennes. Le planificateur à 8h n'est donc pas une garantie de synchronisation sans réauthentification. Le programme affiche l'échec et bloque les opérations paper dans ce cas.
-
-
-## Sécurité et benchmarks (branche feature/ibkr-data-integrity)
-- L'historique IBKR n'est enregistré que si le symbole renvoyé correspond strictement à l'instrument demandé : `AC.PA → AC`, `EXSA.DE → EXSA`, `SPY → SPY`. Les conids restent soumis à une validation manuelle de la place, de la devise et du type de titre.
-- Comparaisons de force relative cohérentes : **EUR vs EXSA.DE** (ETF STOXX Europe 600 coté en EUR), **USD vs SPY** (ETF S&P 500 coté en USD). Sans benchmark configuré et alimenté, aucun signal d'achat n'est autorisé.
-- La migration `sql/migrations/002_currency_benchmarks.sql` est appliquée par `deploy_local.py` **après** sauvegarde vérifiée de la base PostgreSQL. Les volumes existants ne rejouent pas automatiquement `sql/init.sql`.
-- Next.js et React sont mis à jour vers les versions correctives de novembre 2026 ; les dépendances devront passer `npm audit`, le build et les tests Docker avant fusion.
-- Les tests unitaires du validateur IBKR ont été également exécutés indépendamment sous Node 22 (8/8 réussis), mais la CI GitHub complète reste en attente. Ne pas déployer cette branche avant validation.
+Les anciens endpoints IBKR et leur ordonnanceur ont été retirés du projet.
