@@ -11,7 +11,7 @@ test('fresh stage-2 breakout remains eligible and is explained',()=>{
  assert.equal(x.signal,'PHASE2_BREAKOUT');
  assert.equal(x.eligible,true);
  assert.equal(x.stageRank,1);
- assert.equal(x.distanceFromMaPct,10);
+ assert.ok(Math.abs(x.distanceFromMaPct-10)<1e-9);
  assert.ok(x.reasons.join(' ').includes('confirmés'));
 });
 
