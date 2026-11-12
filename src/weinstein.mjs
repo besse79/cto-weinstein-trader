@@ -59,10 +59,43 @@ export function scanWeinstein(daily,{asOf=new Date().toISOString().slice(0,10),b
  const aboveMa=latest.close>ma30;
  const relOK=relativeStrength!==null&&relativeStrength>0;
  const volumeOK=volumeRatio>=1.5;
- const eligible=breakout&&aboveMa&&rising&&volumeOK&&relOK;
- return {signal:eligible?'PHASE2_BREAKOUT':'WATCH',eligible,asOf:latest.lastDay,weeks:n,
+
+ // Constrain breakout to a reasonably bounded base, not an accelerating
+ // runaway trend. Stage 1 is a *candidate* classification, never an order.
+ const baseWeeks=weeks.slice(-16);
+ const baseHigh=Math.max(...baseWeeks.map(w=>w.high));
+ const baseLow=Math.min(...baseWeeks.map(w=>w.low));
+ const baseRangePct=(baseHigh/baseLow-1)*100;
+ const resistanceDistancePct=(priorHigh/latest.close-1)*100;
+ const ma30SixAgo=avg(c.slice(-36,-6));
+ const maSlope6Pct=(ma30/ma30SixAgo-1)*100;
+ const prior=weeks.slice(0,-16).slice(-52);
+ const earlierPeak=prior.length?Math.max(...prior.map(w=>w.high)):null;
+ const priorDeclinePct=earlierPeak?Math.max(0,(1-baseLow/earlierPeak)*100):null;
+ const preBreak=weeks.slice(-13,-1);
+ const preBreakRangePct=(Math.max(...preBreak.map(w=>w.high))/Math.min(...preBreak.map(w=>w.low))-1)*100;
+ const hasBaseForBreakout=preBreak.length>=10&&preBreakRangePct<=30;
+ const eligible=breakout&&aboveMa&&rising&&volumeOK&&relOK&&hasBaseForBreakout;
+
+ // Near a well-established horizontal base, after a genuine previous
+ // drawdown. Strong/neutral 26-week RS helps remove weak stage-4 rebounds.
+ const establishedBase=baseRangePct<=30&&priorDeclinePct!==null&&priorDeclinePct>=18&&
+   maSlope6Pct>=-4&&maSlope6Pct<=4&&latest.close>=ma30*.95&&
+   relativeStrength!==null&&relativeStrength>=-5;
+ const lateBase=establishedBase&&resistanceDistancePct>=0&&resistanceDistancePct<=10;
+ const formingBase=establishedBase&&resistanceDistancePct>10&&resistanceDistancePct<=20;
+ const signal=eligible?'PHASE2_BREAKOUT':lateBase?'PHASE1_LATE':formingBase?'PHASE1_BASE':'WATCH';
+ const stage=eligible?'PHASE2_ENTRY':lateBase?'PHASE1_END':formingBase?'PHASE1_FORMING':'UNCLASSIFIED';
+ const stageRank=eligible?1:lateBase?2:formingBase?3:4;
+ const setupScore=eligible?100:establishedBase?Math.round(Math.max(0,Math.min(95,
+    70-Math.max(0,resistanceDistancePct)*2+
+    Math.max(-10,Math.min(10,relativeStrength??0))+
+    (maSlope6Pct>=0?5:0)))):0;
+ return {signal,stage,stageRank,setupScore,eligible,asOf:latest.lastDay,weeks:n,
    ma30,prevMa30,priorHigh,breakout,aboveMa,rising,volumeRatio,
    relativeStrength,requiresBenchmark:true,
+   baseWeeks:16,baseRangePct,resistanceDistancePct,maSlope6Pct,priorDeclinePct,
+   hasBaseForBreakout,preBreakRangePct,
    /** Reference only, not a verified protective stop. */
    supportCandidate:Math.min(...weeks.slice(-8).map(w=>w.low))};
 }

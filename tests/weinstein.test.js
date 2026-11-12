@@ -34,3 +34,40 @@ test('partial current week is excluded',()=>{
 test('duplicate candles are rejected',()=>{
  const h=history(2);assert.throws(()=>aggregateWeeks([...h,h[0]]))
 });
+
+test('falling stock that establishes a flat base becomes late stage-1 candidate',()=>{
+ const equity=history(72,i=>i<45?150-i*1.05:102+(i%4)*0.35);
+ const market=history(72,i=>104-i*.08);
+ const r=scanWeinstein(equity,{asOf:'2027-01-01',benchmarkDaily:market});
+ assert.equal(r.signal,'PHASE1_LATE');
+ assert.equal(r.stage,'PHASE1_END');
+ assert.equal(r.stageRank,2);
+ assert.equal(r.eligible,false,'Stage 1 candidates must never be purchase signals');
+ assert.ok(r.priorDeclinePct>=18);
+ assert.ok(r.resistanceDistancePct<=10);
+ assert.ok(r.setupScore>0);
+});
+test('sideways market after a long rally is not automatically stage 1',()=>{
+ const equity=history(72,i=>i<45?90+i*1.5:155+(i%4)*.4);
+ const market=history(72,i=>100+i*.15);
+ const r=scanWeinstein(equity,{asOf:'2027-01-01',benchmarkDaily:market});
+ assert.notEqual(r.signal,'PHASE1_LATE');
+ assert.notEqual(r.stage,'PHASE1_END');
+ assert.equal(r.eligible,false);
+});
+test('stage 1 setup can precede a volume-confirmed stage 2 breakout',()=>{
+ const equity=history(72,i=>i<30?150-i*1.6:i===71?125:102+(i%4)*0.35,i=>i===71?60000:10000);
+ const market=history(72,i=>104-i*.08);
+ const r=scanWeinstein(equity,{asOf:'2027-01-01',benchmarkDaily:market});
+ assert.equal(r.signal,'PHASE2_BREAKOUT');
+ assert.equal(r.stage,'PHASE2_ENTRY');
+ assert.equal(r.stageRank,1);
+ assert.equal(r.eligible,true);
+ assert.equal(r.setupScore,100);
+});
+test('stage 1 candidates are excluded without a valid benchmark',()=>{
+ const equity=history(72,i=>i<45?150-i*1.05:102+(i%4)*0.35);
+ const r=scanWeinstein(equity,{asOf:'2027-01-01'});
+ assert.notEqual(r.stage,'PHASE1_END');
+ assert.equal(r.eligible,false);
+});
