@@ -12,6 +12,7 @@ type Detail={
  highlight:{type:string;from:string;to:string}|null;
  assessment:{signal:string;stage?:string;eligible:boolean;reasons:string[];setupScore?:number;distanceFromMaPct?:number|null};
  metrics:{ma30?:number;volumeRatio?:number;relativeStrength?:number;maSlope6Pct?:number;resistanceDistancePct?:number;weeks?:number}|null;
+ watch:{watchScore:number|null;watchStatus:string;watchReasons:string[];currentResistance:number|null;distanceToResistancePct:number|null;provisional:boolean;latestDaily:{day:string;close:number}|null;lastCompletedWeek:string|null}|null;
  explanation:string;note:string
 };
 const fmt=(n:number|null|undefined,digits=2)=>n==null?'—':n.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
@@ -58,6 +59,15 @@ export default function InstrumentDetailPage(){
      <p className="muted">{state?.eligible?'Signal de surveillance confirmé, aucun ordre automatique':'Non éligible à un achat fictif automatique'}</p></div>
     <div><small>Score de préparation (non probabiliste)</small><strong className="detail-score">{state?.setupScore??0}/100</strong></div>
    </div>
+   {detail.watch?.watchScore!=null&&<div className="detail-verdict">
+    <div><small>Veille quotidienne (distincte de la phase hebdomadaire)</small>
+     <h2>{detail.watch.provisional?'CASSURE EN COURS — CONFIRMATION HEBDOMADAIRE ATTENDUE':
+       detail.watch.watchStatus==='NEAR_RESISTANCE'?'PROCHE DE LA RÉSISTANCE':'SURVEILLANCE'}
+     </h2>
+     <p className="muted">Dernier cours quotidien : {detail.watch.latestDaily?.day} · Résistance des 26 semaines clôturées : {price(detail.watch.currentResistance)}. Aucun achat automatique.</p>
+    </div>
+    <div><small>Score de proximité, sans portée prédictive</small><strong className="detail-score">{detail.watch.watchScore}/100</strong></div>
+   </div>}
    <div className="detail-metrics">
     <article><small>Résistance 26 sem.</small><strong>{price(levels?.resistance26)}</strong></article>
     <article><small>Support 8 sem.</small><strong>{price(levels?.support8)}</strong></article>
@@ -68,12 +78,15 @@ export default function InstrumentDetailPage(){
    </div>
    <section className="chart-panel">
     <h2>Analyse graphique</h2>
-    <WeeklyPriceChart series={detail.series} levels={levels??null} highlight={detail.highlight} currency={detail.instrument.currency}/>
+    <WeeklyPriceChart series={detail.series} levels={levels??null} highlight={detail.highlight} dailyMarker={detail.watch?.latestDaily??null} watchResistance={detail.watch?.currentResistance??null} currency={detail.instrument.currency}/>
    </section>
    <section className="detail-analysis">
     <h2>Pourquoi ce classement ?</h2>
     <p className="muted">Les critères sont calculés sur des semaines terminées, sans anticiper la prochaine clôture.</p>
     <ul>{state?.reasons?.length?state.reasons.map((reason,i)=><li key={i}>{reason}</li>):<li>Aucune évaluation disponible</li>}</ul>
+    {detail.watch?.watchReasons?.length>0&&<><h3>Critères de veille quotidienne</h3>
+     <ul>{detail.watch.watchReasons.map((reason,i)=><li key={i}>{reason}</li>)}</ul>
+    </>}
     <div className="detail-metrics">
      <article><small>Distance à la résistance</small><strong>{metrics?.resistanceDistancePct==null?'—':fmt(metrics.resistanceDistancePct)+' %'}</strong></article>
      <article><small>Écart cours / MM30</small><strong>{state?.distanceFromMaPct==null?'—':fmt(state.distanceFromMaPct)+' %'}</strong></article>
