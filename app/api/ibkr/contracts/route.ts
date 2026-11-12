@@ -17,7 +17,7 @@ export async function GET(req:NextRequest){
   return Response.json({error:'Invalid instrument'},{status:400});
  const found=await pool.query('SELECT id,symbol,name,currency FROM instruments WHERE symbol=$1',[appSymbol]);
  if(!found.rows.length)return Response.json({error:'Instrument not in watchlist'},{status:404});
- const shortSymbol=appSymbol.replace(/\.PA$/,'');
+ const shortSymbol=appSymbol.replace(/\.(PA|DE)$/,'');
  const u=new URL(base+'/iserver/secdef/search');
  u.searchParams.set('symbol',shortSymbol);
  try{
