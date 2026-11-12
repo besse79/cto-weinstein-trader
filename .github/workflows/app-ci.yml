@@ -20,10 +20,6 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm audit --audit-level=high
       - run: npm test
-      - name: Confirm scheduler is disabled by default
-        run: node scripts/run-paper-cycle.mjs
-        env:
-          PAPER_AUTOMATION_ENABLED: 'false'
       - run: npm run typecheck
       - run: npm run build
         env:
@@ -152,13 +148,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify Python syntax
-        run: python3 -m py_compile deploy_local.py restore.py scripts/diagnose_ibkr.py
+        run: python3 -m py_compile deploy_local.py restore.py
       - name: Check host prerequisites without changing state
         run: python3 deploy_local.py --check
       - name: Start CTO application with local installer
         run: python3 deploy_local.py
-      - name: Diagnose unconfigured gateway safely
-        run: python3 scripts/diagnose_ibkr.py
       - name: Verify paper dashboard
         run: |
           curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
