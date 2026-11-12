@@ -54,10 +54,10 @@ jobs:
       - name: Initialize schema and validate initial portfolio
         run: |
           psql -v ON_ERROR_STOP=1 -f sql/init.sql
-          psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='initial_cash'" | grep -Fx 600
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='initial_cash'" | grep -Fx 500
           psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='account_type'" | grep -Fx CTO
           psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='paper_only'" | grep -Fx true
-          psql -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 5
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 6
       - name: Verify schema initialization is idempotent
         run: psql -v ON_ERROR_STOP=1 -f sql/init.sql
   docker-paper-e2e:
@@ -117,7 +117,7 @@ jobs:
         run: |
           node tests/mock-ibkr-gateway.mjs > /tmp/ibkr-mock.log 2>&1 &
           for i in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:5055/v1/api/iserver/auth/status >/dev/null; then exit 0; fi
+            if curl -fsS -X POST http://127.0.0.1:5055/v1/api/iserver/auth/status >/dev/null; then exit 0; fi
             sleep 1
           done
           cat /tmp/ibkr-mock.log
@@ -149,12 +149,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify Python syntax
         run: python3 -m py_compile deploy_local.py restore.py scripts/diagnose_ibkr.py
-      - name: Diagnose unconfigured gateway safely
-        run: python3 scripts/diagnose_ibkr.py
       - name: Check host prerequisites without changing state
         run: python3 deploy_local.py --check
       - name: Start CTO application with local installer
         run: python3 deploy_local.py
+      - name: Diagnose unconfigured gateway safely
+        run: python3 scripts/diagnose_ibkr.py
       - name: Verify paper dashboard
         run: |
           curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
