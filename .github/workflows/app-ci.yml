@@ -16,6 +16,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
+      - run: npm audit --audit-level=high
       - run: npm test
       - name: Confirm scheduler is disabled by default
         run: node scripts/run-paper-cycle.mjs
@@ -157,6 +158,9 @@ jobs:
           curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
       - name: Run installer again to produce verified PostgreSQL backup
         run: python3 deploy_local.py
+      - name: Verify EUR benchmark migrated exactly once
+        run: |
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments WHERE symbol='EXSA.DE' AND currency='EUR'" | grep -Fx 1
       - name: Verify rollback archive without modifying database
         run: |
           latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
