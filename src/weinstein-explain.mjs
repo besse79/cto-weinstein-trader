@@ -15,8 +15,6 @@ export function explainSetup(scan){
  if(!(scan.relativeStrength>0))errors.push('Force relative non positive');
  if(!scan.hasBaseForBreakout)errors.push('Base de 12 semaines absente ou trop volatile (>30 %)');
 
- const extensionPct=Number.isFinite(scan.ma30)&&scan.ma30>0&&scan.priorHigh>0
-  ? null:null;
  // For confirmed breakouts, evaluate the closing price relative to the MM30,
  // not the breakout resistance. Reconstruct closing price via the last close
  // supplied by the scanner in the API, rather than using an invented quote.
