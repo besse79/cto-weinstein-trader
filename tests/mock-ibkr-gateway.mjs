@@ -13,15 +13,16 @@ const server=http.createServer((req,res)=>{
  if(path.pathname==='/v1/api/iserver/secdef/search'){
    const symbol=path.searchParams.get('symbol');
    if(symbol==='AC')return json(200,[{conid:1001,symbol:'AC',companyName:'ACCOR',description:'SBF',sections:[{secType:'STK',exchange:'SBF;'}]}]);
+   if(symbol==='EXSA')return json(200,[{conid:1003,symbol:'EXSA',companyName:'iShares STOXX Europe 600 ETF',description:'IBIS',sections:[{secType:'STK',exchange:'IBIS;'}]}]);
    if(symbol==='SPY')return json(200,[{conid:1002,symbol:'SPY',companyName:'SPDR S&P 500 ETF',description:'ARCA',sections:[{secType:'STK',exchange:'ARCA;'}]}]);
    return json(200,[]);
  }
 
  if(path.pathname==='/v1/api/iserver/marketdata/history'){
    calls++;
-   if(!['1001','1002'].includes(path.searchParams.get('conid')))return json(404,{error:'unrecognized conid'});
+   if(!['1001','1002','1003'].includes(path.searchParams.get('conid')))return json(404,{error:'unrecognized conid'});
    if(path.searchParams.get('bar')!=='1d')return json(400,{error:'bar must be daily'});
-   return json(200,{symbol:path.searchParams.get('conid')==='1001'?'AC':'SPY',data:bars});
+   return json(200,{symbol:path.searchParams.get('conid')==='1001'?'AC':path.searchParams.get('conid')==='1003'?'EXSA':'SPY',data:bars});
  }
  return json(404,{error:'unsupported endpoint'});
 });
