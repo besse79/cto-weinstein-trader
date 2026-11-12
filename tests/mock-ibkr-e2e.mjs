@@ -29,7 +29,7 @@ const denied=await request('/api/ibkr/history',{symbol:'AC.PA'},false);
 assert.equal(denied.status,401);
 const invalid=await request('/api/ibkr/history',{symbol:'NOT.ALLOWED'});
 assert.equal(invalid.status,400);
-for(const symbol of ['AC.PA','SPY']){
+for(const symbol of ['AC.PA','SPY','EXSA.DE']){
  const result=await request('/api/ibkr/history',{symbol});
  assert.equal(result.status,200,JSON.stringify(result));
  assert.equal(result.body.mode,'READ_ONLY');
@@ -46,4 +46,5 @@ assert.equal(scanner.body.results.some(r=>r.symbol==='AC.PA' && r.benchmark==='E
 assert.equal(scanner.body.results.some(r=>r.symbol==='EXSA.DE'),false);
 assert.equal(scanner.body.results.every(r=>r.eligible===false),true);
 assert.equal(scanner.body.results.find(r=>r.symbol==='AC.PA')?.signal,'STALE_DATA');
+assert.equal(scanner.body.results.find(r=>r.symbol==='AC.PA')?.benchmark,'EXSA.DE');
 console.log('PASS broker status, credential isolation, contract allowlist, PostgreSQL history import, stale-signal block');
