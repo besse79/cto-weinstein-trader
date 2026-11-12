@@ -56,7 +56,7 @@ test('sideways market after a long rally is not automatically stage 1',()=>{
  assert.equal(r.eligible,false);
 });
 test('stage 1 setup can precede a volume-confirmed stage 2 breakout',()=>{
- const equity=history(72,i=>i<45?150-i*1.05:i===71?125:102+(i%4)*0.35,i=>i===71?60000:10000);
+ const equity=history(72,i=>i<30?150-i*1.6:i===71?125:102+(i%4)*0.35,i=>i===71?60000:10000);
  const market=history(72,i=>104-i*.08);
  const r=scanWeinstein(equity,{asOf:'2027-01-01',benchmarkDaily:market});
  assert.equal(r.signal,'PHASE2_BREAKOUT');
