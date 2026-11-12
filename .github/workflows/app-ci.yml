@@ -148,11 +148,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify Python syntax
-        run: python3 -m py_compile deploy_local.py restore.py
+        run: python3 -m py_compile deploy_local.py restore.py scripts/validate_yahoo.py
       - name: Check host prerequisites without changing state
         run: python3 deploy_local.py --check
       - name: Start CTO application with local installer
         run: python3 deploy_local.py
+      - name: Validate Yahoo diagnostics safely without import
+        run: python3 scripts/validate_yahoo.py
       - name: Verify paper dashboard
         run: |
           curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
