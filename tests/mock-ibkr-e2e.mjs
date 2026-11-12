@@ -40,6 +40,10 @@ for(const symbol of ['AC.PA','SPY']){
 }
 const scanner=await request('/api/scanner');
 assert.equal(scanner.status,200,JSON.stringify(scanner));
-assert.equal(scanner.body.results.some(r=>r.symbol==='AC.PA'),true);
+assert.equal(scanner.body.benchmarkByCurrency.EUR,'EXSA.DE');
+assert.equal(scanner.body.benchmarkByCurrency.USD,'SPY');
+assert.equal(scanner.body.results.some(r=>r.symbol==='AC.PA' && r.benchmark==='EXSA.DE'),true);
+assert.equal(scanner.body.results.some(r=>r.symbol==='EXSA.DE'),false);
 assert.equal(scanner.body.results.every(r=>r.eligible===false),true);
+assert.equal(scanner.body.results.find(r=>r.symbol==='AC.PA')?.signal,'STALE_DATA');
 console.log('PASS broker status, credential isolation, contract allowlist, PostgreSQL history import, stale-signal block');
