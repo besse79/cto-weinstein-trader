@@ -8,6 +8,12 @@ async function post(path,body,auth=true){
   body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
  return {status:r.status,json:await r.json()};
 }
+const noHistoryResponse=await fetch(base+'/api/instrument/AC.PA');
+assert.equal(noHistoryResponse.status,200);
+const noHistory=await noHistoryResponse.json();
+assert.equal(noHistory.assessment.signal,'NO_DATA');
+assert.equal(noHistory.assessment.eligible,false);
+assert.deepEqual(noHistory.series,[]);
 let r=await post('/api/market/sync',{all:true},false);
 assert.equal(r.status,401);
 r=await post('/api/market/sync',{symbol:'NOTINDB'});
@@ -51,12 +57,6 @@ const missing=await fetch(base+'/api/instrument/UNKNOWN.PA');
 assert.equal(missing.status,404);
 const bad=await fetch(base+'/api/instrument/%3Cbad%3E');
 assert.equal(bad.status,400);
-const noHistoryResponse=await fetch(base+'/api/instrument/MC.PA');
-assert.equal(noHistoryResponse.status,200);
-const noHistory=await noHistoryResponse.json();
-assert.equal(noHistory.assessment.signal,'NO_DATA');
-assert.equal(noHistory.assessment.eligible,false);
-assert.deepEqual(noHistory.series,[]);
 console.log('PASS instrument detail weekly chart, price/volume metrics, safe empty market, input validation');
 const universe=await (await fetch(base+'/api/universe')).json();
 assert.equal(universe.count,6);
