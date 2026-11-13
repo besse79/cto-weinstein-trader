@@ -65,7 +65,7 @@ export function backtestWeinsteinPortfolio(instruments,benchmarkDaily,{
   // before purchases at the same opening timestamp.
   for(const [symbol,p] of [...positions]){
    const bar=p.asset.map.get(week);
-   if(!bar){skipped.push({symbol,week,reason:'MISSING_HELD_BAR'});continue}
+   if(!bar)throw Error('Missing weekly candle while holding '+symbol+' at '+week)
    const fill=bar.open<=p.stop?bar.open*(1-slippageFraction):null;
    if(fill!==null){
     const proceeds=p.qty*fill-fee;
@@ -103,7 +103,7 @@ export function backtestWeinsteinPortfolio(instruments,benchmarkDaily,{
   // entries. A gap can breach the stop even on the entry week.
   for(const [symbol,p] of [...positions]){
    const bar=p.asset.map.get(week);
-   if(!bar)continue;
+   if(!bar)throw Error('Missing weekly candle while holding '+symbol+' at '+week);
    p.held++;
    const stop=simulateLongStop({stop:p.stop,open:bar.open,low:bar.low,high:bar.high});
    if(stop.reason==='INVALID_CANDLE')throw Error('Invalid portfolio OHLCV');
@@ -132,18 +132,32 @@ export function backtestWeinsteinPortfolio(instruments,benchmarkDaily,{
  }
  const finalEquity=equityCurve.at(-1)?.equity??initialCash;
  const closedPnl=trades.reduce((sum,t)=>sum+t.pnl,0);
+ // Fixed chronological evaluation windows. Rule parameters are NOT trained
+ // or tuned here, so these are descriptive periods, not claimed OOS proof.
+ const count=equityCurve.length;
+ const cut1=Math.floor(count*.6),cut2=Math.floor(count*.8);
+ const segments=[['EARLY_60',0,cut1],['MIDDLE_20',cut1,cut2],['RECENT_20',cut2,count]];
+ const periods=segments.map(([name,start,end])=>{
+  const from=equityCurve[start],to=equityCurve[end-1];
+  const baseline=start>0?equityCurve[start-1]?.equity:initialCash;
+  return {name,from:from?.week??null,to:to?.week??null,
+   weeks:Math.max(0,end-start),
+   returnPct:to&&baseline>0?(to.equity/baseline-1)*100:null,
+   trades:trades.filter(t=>from&&to&&t.exitWeek>=from.week&&t.exitWeek<=to.week).length};
+ });
  return {mode:'PAPER_PORTFOLIO_BACKTEST',initialCash,finalCash:round(cash),
   finalEquity,returnPct:(finalEquity/initialCash-1)*100,
   maxDrawdownPct,tradeCount:trades.length,
   winRatePct:trades.length?trades.filter(t=>t.pnl>0).length/trades.length*100:null,
   holdWeeks,maxPositions,fee,slippageFraction,
   positionsOpen:[...positions.keys()],closedPnl:round(closedPnl),
-  trades,orders,skipped,equityCurve,
+  trades,orders,skipped,equityCurve,periods,
   symbolsAnalyzed:assets.length,
   assumptions:[
    'Signals confirmed at past weekly closes; entry at next week opening only.',
    'Shared 500 EUR notional cash, EUR instruments only, maximum 4 concurrent positions.',
    'Exits use weekly OHLC (gap at open, weekly low stop); same-week ordering is approximate.',
+   'Early 60% / middle 20% / recent 20% are descriptive chronological windows, not optimized out-of-sample validation.',
    'Current watchlist survivorship bias. Yahoo historical splits/dividends not independently verified.',
    'Illustrative fictitious portfolio, no taxes, no borrowing, no orders and no proof of profitability.'
   ]};
