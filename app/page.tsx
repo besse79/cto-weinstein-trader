@@ -6,7 +6,7 @@ type Position={id:number;symbol:string;name:string;qty:number;avg:number;last:nu
 type Order={id:number;symbol:string;side:string;qty:number;price:number;fee:number;created_at:string};
 type UniverseBatch={id:string;name:string;symbols:string[];instruments:{symbol:string;name:string;bars:number;last_day:string|null}[]};
 type Scan={id:number;symbol:string;name:string;signal:string;stage?:string;stageRank?:number;setupScore?:number;watchScore?:number|null;watchStatus?:string;provisional?:boolean;currentResistance?:number|null;distanceToResistancePct?:number|null;watchReasons?:string[];reasons?:string[];distanceFromMaPct?:number;resistanceDistancePct?:number;maSlope6Pct?:number;priorDeclinePct?:number;eligible:boolean;last:{day:string;close:number}|null;ma30?:number;volumeRatio?:number;relativeStrength?:number;priorHigh?:number};
-type PortfolioBacktest={initialCash:number;finalCash:number;finalEquity:number;returnPct:number;tradeCount:number;maxDrawdownPct:number;winRatePct:number|null;holdWeeks:number;symbolsAnalyzed:number;equityCurve:{week:string;cash:number;equity:number;openPositions:number}[];trades:{symbol:string;signalWeek:string;entryWeek:string;exitWeek:string;quantity:number;pnl:number;exitReason:string}[];skipped:{symbol:string;week?:string;reason:string}[];positionsOpen:string[];assumptions:string[]};
+type PortfolioBacktest={initialCash:number;finalCash:number;finalEquity:number;returnPct:number;tradeCount:number;maxDrawdownPct:number;winRatePct:number|null;holdWeeks:number;symbolsAnalyzed:number;equityCurve:{week:string;cash:number;equity:number;openPositions:number}[];trades:{symbol:string;signalWeek:string;entryWeek:string;exitWeek:string;quantity:number;pnl:number;exitReason:string}[];skipped:{symbol:string;week?:string;reason:string}[];positionsOpen:string[];periods:{name:string;from:string|null;to:string|null;weeks:number;returnPct:number|null;trades:number}[];assumptions:string[]};
 type Dashboard={mode:string;initial:number;cash:number;equity:number;signals:Signal[];positions:Position[];orders:Order[];error?:string};
 const euro=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 export default function Home(){
@@ -138,6 +138,12 @@ export default function Home(){
        <article><small>Taux de transactions gagnantes</small><h2>{portfolioBacktest.winRatePct==null?'—':portfolioBacktest.winRatePct.toFixed(1)+' %'}</h2></article>
        <article><small>Actions analysées</small><h2>{portfolioBacktest.symbolsAnalyzed}</h2></article>
       </div>
+      <h3>Comparaison de trois périodes chronologiques</h3>
+      <p className="muted">Découpage fixe 60 % / 20 % / 20 % du calendrier, sans réglage des paramètres : indicateurs descriptifs, pas validation statistique hors échantillon.</p>
+      <div className="table"><table><thead><tr><th>Période</th><th>Du</th><th>Au</th><th>Semaines</th><th>Performance</th><th>Sorties</th></tr></thead>
+      <tbody>{portfolioBacktest.periods.map(p=><tr key={p.name}>
+       <td>{p.name==='EARLY_60'?'Premiers 60 %':p.name==='MIDDLE_20'?'20 % intermédiaires':'Derniers 20 %'}</td><td>{p.from??'—'}</td><td>{p.to??'—'}</td><td>{p.weeks}</td><td>{p.returnPct==null?'—':p.returnPct.toFixed(2)+' %'}</td><td>{p.trades}</td>
+      </tr>)}</tbody></table></div>
       <h3>Évolution chronologique de l'équité fictive</h3>
       <div className="table"><table><thead><tr><th>Semaine</th><th>Liquidités</th><th>Équité estimée</th><th>Positions ouvertes</th></tr></thead><tbody>
        {portfolioBacktest.equityCurve.slice(-20).reverse().map(x=><tr key={x.week}><td>{x.week}</td><td>{euro(x.cash)}</td><td>{euro(x.equity)}</td><td>{x.openPositions}</td></tr>)}
