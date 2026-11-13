@@ -5,6 +5,7 @@ import {useParams} from 'next/navigation';
 import WeeklyPriceChart from '../../components/WeeklyPriceChart';
 
 type Candle={week:string;lastDay:string;open:number;high:number;low:number;close:number;volume:number;ma30:number|null;volumeAvg10:number|null};
+type Historical={weeks:{week:string;phase:string;reason:string;confirmedBreakout:boolean}[];transitions:{week:string;from:string;to:string;close:number;confirmedBreakout:boolean}[];counts:Record<string,number>;signals:number;forwardOutcomes:{weeks:number;samples:number;averageReturnPct:number|null;positiveRatePct:number|null}[];note:string;methodology:string};
 type Detail={
  instrument:{id:number;symbol:string;name:string;currency:string};
  benchmark:string|null;asOf:string;latest:{day:string;close:number}|null;marketStatus:string;
@@ -13,6 +14,7 @@ type Detail={
  assessment:{signal:string;stage?:string;eligible:boolean;reasons:string[];setupScore?:number;distanceFromMaPct?:number|null};
  metrics:{ma30?:number;volumeRatio?:number;relativeStrength?:number;maSlope6Pct?:number;resistanceDistancePct?:number;weeks?:number}|null;
  watch:{watchScore:number|null;watchStatus:string;watchReasons:string[];currentResistance:number|null;distanceToResistancePct:number|null;provisional:boolean;latestDaily:{day:string;close:number}|null;lastCompletedWeek:string|null}|null;
+ historical:Historical|null;
  explanation:string;note:string
 };
 const fmt=(n:number|null|undefined,digits=2)=>n==null?'—':n.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
@@ -78,8 +80,32 @@ export default function InstrumentDetailPage(){
    </div>
    <section className="chart-panel">
     <h2>Analyse graphique</h2>
-    <WeeklyPriceChart series={detail.series} levels={levels??null} highlight={detail.highlight} dailyMarker={detail.watch?.latestDaily??null} watchResistance={detail.watch?.currentResistance??null} currency={detail.instrument.currency}/>
+    <WeeklyPriceChart series={detail.series} levels={levels??null} highlight={detail.highlight} dailyMarker={detail.watch?.latestDaily??null} watchResistance={detail.watch?.currentResistance??null} phases={detail.historical?.weeks??[]} currency={detail.instrument.currency}/>
    </section>
+   {detail.historical&&<section className="detail-analysis">
+    <h2>V3 · Historique des phases Weinstein</h2>
+    <p className="muted">{detail.historical.note} Les phases sont estimées semaine après semaine, sans connaître le futur.</p>
+    <div className="detail-metrics">
+     {['PHASE1','PHASE2','PHASE3','PHASE4'].map((p,i)=><article key={p}>
+       <small>Phase {i+1}</small><strong>{detail.historical?.counts[p]??0} sem.</strong>
+      </article>)}
+     <article><small>Transitions confirmées vers phase 2</small><strong>{detail.historical.signals}</strong></article>
+     <article><small>Semaines non classées</small><strong>{detail.historical.counts.UNCLASSIFIED??0}</strong></article>
+    </div>
+    <h3>Dernières transitions détectées</h3>
+    <div className="table"><table><thead><tr><th>Semaine</th><th>Ancien état</th><th>Nouvelle phase</th><th>Clôture</th><th>Cassure confirmée</th></tr></thead>
+     <tbody>{detail.historical.transitions.length?detail.historical.transitions.slice(-10).reverse().map((x,i)=><tr key={x.week+'-'+i}>
+      <td>{x.week}</td><td>{x.from.replace('PHASE','Phase ')}</td><td>{x.to.replace('PHASE','Phase ')}</td>
+      <td>{price(x.close)}</td><td>{x.confirmedBreakout?'Oui':'Non'}</td></tr>):
+      <tr><td colSpan={5}>Aucune transition classable avec les données disponibles.</td></tr>}</tbody></table></div>
+    <h3>Observation des rendements après cassure</h3>
+    <div className="table"><table><thead><tr><th>Horizon</th><th>Échantillons terminés</th><th>Rendement moyen brut</th><th>Part positive</th></tr></thead>
+     <tbody>{detail.historical.forwardOutcomes.map(x=><tr key={x.weeks}>
+      <td>{x.weeks} semaines</td><td>{x.samples}</td>
+      <td>{x.averageReturnPct==null?'Données insuffisantes':fmt(x.averageReturnPct)+' %'}</td>
+      <td>{x.positiveRatePct==null?'—':fmt(x.positiveRatePct,1)+' %'}</td></tr>)}</tbody></table></div>
+    <p className="muted">Ces chiffres décrivent des cours passés ; il ne s'agit pas d'un backtest de portefeuille. Pas de frais, de change, ni de correction validée des dividendes, splits et biais de survivance.</p>
+   </section>}
    <section className="detail-analysis">
     <h2>Pourquoi ce classement ?</h2>
     <p className="muted">Les critères sont calculés sur des semaines terminées, sans anticiper la prochaine clôture.</p>
