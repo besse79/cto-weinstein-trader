@@ -6,10 +6,12 @@ type Position={id:number;symbol:string;name:string;qty:number;avg:number;last:nu
 type Order={id:number;symbol:string;side:string;qty:number;price:number;fee:number;created_at:string};
 type UniverseBatch={id:string;name:string;symbols:string[];instruments:{symbol:string;name:string;bars:number;last_day:string|null}[]};
 type Scan={id:number;symbol:string;name:string;signal:string;stage?:string;stageRank?:number;setupScore?:number;watchScore?:number|null;watchStatus?:string;provisional?:boolean;currentResistance?:number|null;distanceToResistancePct?:number|null;watchReasons?:string[];reasons?:string[];distanceFromMaPct?:number;resistanceDistancePct?:number;maSlope6Pct?:number;priorDeclinePct?:number;eligible:boolean;last:{day:string;close:number}|null;ma30?:number;volumeRatio?:number;relativeStrength?:number;priorHigh?:number};
+type PortfolioBacktest={initialCash:number;finalCash:number;finalEquity:number;returnPct:number;tradeCount:number;maxDrawdownPct:number;winRatePct:number|null;holdWeeks:number;symbolsAnalyzed:number;equityCurve:{week:string;cash:number;equity:number;openPositions:number}[];trades:{symbol:string;signalWeek:string;entryWeek:string;exitWeek:string;quantity:number;pnl:number;exitReason:string}[];skipped:{symbol:string;week?:string;reason:string}[];positionsOpen:string[];assumptions:string[]};
 type Dashboard={mode:string;initial:number;cash:number;equity:number;signals:Signal[];positions:Position[];orders:Order[];error?:string};
 const euro=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 export default function Home(){
  const [tab,setTab]=useState(0),[data,setData]=useState<Dashboard|null>(null),[scans,setScans]=useState<Scan[]>([]),[token,setToken]=useState(''),[message,setMessage]=useState('');
+ const [portfolioHorizon,setPortfolioHorizon]=useState(12),[portfolioBacktest,setPortfolioBacktest]=useState<PortfolioBacktest|null>(null),[portfolioBacktestError,setPortfolioBacktestError]=useState(''),[portfolioBusy,setPortfolioBusy]=useState(false);
  const [syncBusy,setSyncBusy]=useState(false),[batches,setBatches]=useState<UniverseBatch[]>([]),[batchIndex,setBatchIndex]=useState(0),[screenView,setScreenView]=useState<'TOP'|'PHASE2'|'PHASE1'|'OTHER'|'MISSING'>('TOP');
  async function load(){try{
   const [r,s,u]=await Promise.all([
@@ -38,6 +40,16 @@ export default function Home(){
   }catch{setMessage('Import impossible : réseau ou API indisponible')}
   finally{setSyncBusy(false)}
  }
+ async function loadPortfolioBacktest(weeks=portfolioHorizon){
+  setPortfolioBusy(true);setPortfolioBacktestError('');
+  try{
+   const response=await fetch('/api/portfolio-backtest?weeks='+weeks,{cache:'no-store'});
+   const data=await response.json();
+   if(!response.ok)throw Error(data.error||'Simulation portefeuille indisponible');
+   setPortfolioBacktest(data.result);
+  }catch(e){setPortfolioBacktest(null);setPortfolioBacktestError(String(e))}
+  finally{setPortfolioBusy(false)}
+ }
  const validScans=scans.filter(s=>typeof s.watchScore==='number' && s.watchStatus!=='UNAVAILABLE');
  const topScans=[...validScans].sort((a,b)=>(b.watchScore??0)-(a.watchScore??0)||a.symbol.localeCompare(b.symbol)).slice(0,5);
  const missingScans=scans.filter(s=>['NO_DATA','STALE_DATA','NO_BENCHMARK','STALE_BENCHMARK','INSUFFICIENT_HISTORY','INSUFFICIENT_BENCHMARK'].includes(s.signal));
@@ -56,7 +68,7 @@ export default function Home(){
  }
  return <main>
   <header><div><h1>CTO Weinstein Trader</h1><small>Stratégie Weinstein · Yahoo Finance (cours non officiels) · Simulation interne</small></div><span className="badge">PAPER ONLY</span></header>
-  <nav><button className={tab===0?'active':''} onClick={()=>setTab(0)}>01 · Trades du matin</button><button className={tab===1?'active':''} onClick={()=>setTab(1)}>02 · Portefeuille / ventes</button><button onClick={()=>void load()}>Actualiser</button></nav>
+  <nav><button className={tab===0?'active':''} onClick={()=>setTab(0)}>01 · Trades du matin</button><button className={tab===1?'active':''} onClick={()=>setTab(1)}>02 · Portefeuille / ventes</button><button className={tab===2?'active':''} onClick={()=>{setTab(2);void loadPortfolioBacktest()}}>03 · Backtest V4</button><button onClick={()=>void load()}>Actualiser</button></nav>
   <label>Jeton local <input aria-label="Jeton local" type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="APP_TOKEN"/></label>
   {message&&<div className="notice" role="status">{message}</div>}
   {data?.error&&<div className="notice" role="alert">PostgreSQL indisponible : {data.error}</div>}
@@ -110,7 +122,35 @@ export default function Home(){
      </tr>):<tr><td colSpan={11}>Aucun titre dans cette catégorie avec les données disponibles.</td></tr>}
     </tbody></table></div>
    <p className="muted">Classement indicatif sur semaines clôturées et benchmark de même devise. Le score de veille classe les configurations proches, sans représenter une probabilité ni autoriser un achat. Une cassure quotidienne en cours de semaine reste provisoire ; seule la clôture hebdomadaire peut confirmer la phase 2.</p>
-   </section>:
+   </section>:tab===2?<section>
+    <h2>V4 · Backtesting portefeuille multi-actions</h2>
+    <p className="muted">Portefeuille fictif unique de 500 €, capital partagé entre les actions françaises importées. Signaux Weinstein hebdomadaires, entrée la semaine suivante, quatre positions maximum, frais et stops simulés. Aucune écriture en base et aucun ordre réel.</p>
+    <div className="chart-toolbar">
+     <strong>Durée maximale de détention</strong>
+     <div>{[4,8,12,26].map(weeks=><button key={weeks} className={portfolioHorizon===weeks?'active':''} onClick={()=>{setPortfolioHorizon(weeks);void loadPortfolioBacktest(weeks)}}>{weeks} sem.</button>)}</div>
+    </div>
+    {portfolioBusy?<p>Calcul en cours...</p>:portfolioBacktestError?<div className="notice" role="alert">{portfolioBacktestError}</div>:portfolioBacktest&&<>
+      <div className="cards">
+       <article><small>Équité finale simulée</small><h2>{euro(portfolioBacktest.finalEquity)}</h2></article>
+       <article><small>Performance fictive</small><h2>{portfolioBacktest.returnPct.toFixed(2)} %</h2></article>
+       <article><small>Recul maximal simulé</small><h2>{portfolioBacktest.maxDrawdownPct.toFixed(2)} %</h2></article>
+       <article><small>Positions clôturées</small><h2>{portfolioBacktest.tradeCount}</h2></article>
+       <article><small>Taux de transactions gagnantes</small><h2>{portfolioBacktest.winRatePct==null?'—':portfolioBacktest.winRatePct.toFixed(1)+' %'}</h2></article>
+       <article><small>Actions analysées</small><h2>{portfolioBacktest.symbolsAnalyzed}</h2></article>
+      </div>
+      <h3>Évolution chronologique de l'équité fictive</h3>
+      <div className="table"><table><thead><tr><th>Semaine</th><th>Liquidités</th><th>Équité estimée</th><th>Positions ouvertes</th></tr></thead><tbody>
+       {portfolioBacktest.equityCurve.slice(-20).reverse().map(x=><tr key={x.week}><td>{x.week}</td><td>{euro(x.cash)}</td><td>{euro(x.equity)}</td><td>{x.openPositions}</td></tr>)}
+      </tbody></table></div>
+      <h3>Transactions fictives terminées</h3>
+      <div className="table"><table><thead><tr><th>Action</th><th>Signal</th><th>Entrée</th><th>Sortie</th><th>Quantité</th><th>Résultat</th><th>Motif</th></tr></thead><tbody>
+       {portfolioBacktest.trades.length?portfolioBacktest.trades.slice(-30).reverse().map((x,i)=><tr key={x.symbol+'-'+x.entryWeek+'-'+i}><td><Link href={'/instrument/'+encodeURIComponent(x.symbol)}>{x.symbol}</Link></td><td>{x.signalWeek}</td><td>{x.entryWeek}</td><td>{x.exitWeek}</td><td>{x.quantity}</td><td>{euro(x.pnl)}</td><td>{x.exitReason}</td></tr>):
+        <tr><td colSpan={7}>Aucune transaction admissible avec ce capital et ces règles.</td></tr>}
+      </tbody></table></div>
+      <p className="muted">Signaux ignorés : {portfolioBacktest.skipped.length}. Positions théoriques encore ouvertes : {portfolioBacktest.positionsOpen.join(', ')||'aucune'}.</p>
+      <p className="muted">Limites : univers actuel soumis au biais de survivance, cours Yahoo non corrigés indépendamment des splits/dividendes, hypothèses simplifiées de prix d'exécution et d'ordre intrase semaine, aucun impôt ni change historique. Simulation non prédictive.</p>
+    </>}
+  </section>:
   <section><h2>Portefeuille et ventes fictives</h2><div className="table"><table><thead><tr><th>Valeur</th><th>Quantité</th><th>PRU</th><th>Cours</th><th>Stop</th><th>Signal</th><th>Action</th></tr></thead><tbody>{data?.positions.length?data.positions.map(p=><tr key={p.id}><td>{p.name}<small>{p.symbol}</small></td><td>{p.qty}</td><td>{euro(p.avg)}</td><td>{euro(p.last)}</td><td>{euro(p.stop)}</td><td>{p.alert}</td><td><button disabled={!token||p.last==null} onClick={()=>void order(p,'SELL')}>Vendre paper</button></td></tr>):<tr><td colSpan={7}>Aucune position ouverte</td></tr>}</tbody></table></div>
   <h2>Historique paper</h2><div className="table"><table><thead><tr><th>Date</th><th>Instrument</th><th>Opération</th><th>Quantité</th><th>Prix</th></tr></thead><tbody>{data?.orders.map(o=><tr key={o.id}><td>{new Date(o.created_at).toLocaleString('fr-FR')}</td><td>{o.symbol}</td><td>{o.side}</td><td>{o.qty}</td><td>{euro(Number(o.price))}</td></tr>)}</tbody></table></div></section>}
  </main>;
