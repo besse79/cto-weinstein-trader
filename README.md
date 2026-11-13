@@ -117,3 +117,24 @@ Un tableau descriptif affiche, pour chaque cassure historiquement détectée, le
 La nouvelle fonctionnalité est **en lecture seule**, calculée depuis les historiques PostgreSQL existants. Aucun nouvel accès Yahoo, aucune migration de données, aucune commande de courtier, et le portefeuille demeure fictif à **500 €**.
 
 Commande WSL après CI verte : `cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py`.
+
+## V4 — lot 1 : risque et simulation de performance Weinstein
+
+La branche `feature/weinstein-v4-integrated` poursuit le développement commencé dans l'autre discussion, sans modifier `develop` avant validation.
+
+- Position fictive : capital de départ **500 €**, risque théorique **1 %** par entrée, exposition maximum **25 %** par action et taille entière d'actions ; calcul existant `src/paper-risk.mjs`, conservé.
+- Événement historique : uniquement cassure de phase 2 sur une clôture hebdomadaire **déjà terminée**, avec données de benchmark disponibles à cette date.
+- Exécution fictive : **au plus tôt à l'ouverture de la semaine suivante** ; stop pris sur les huit semaines terminées à la date du signal ; simulation de stop et de gap d'ouverture, commission fixe fictive de 0,50 € par côté, glissement simulé de 0,1 %.
+- Horizon : **4, 8, 12 ou 26 semaines**. Si aucune sortie historique ne peut être observée, la transaction n'est pas intégrée aux résultats. Les opérations par action sont séquentielles, sans chevauchement.
+- API lecture seule `GET /api/instrument/AC.PA/backtest?weeks=12`, intégrée à la fiche action. Aucun ordre fictif persistant n'est émis. Les titres USD sont **bloqués** tant que la conversion historique EUR/USD n'est pas implémentée.
+- Indicateurs : capital fictif final, performance, transactions terminées, taux de transactions positives, recul maximum calculé sur **l'équité réalisée uniquement** (qui sous-estime potentiellement le drawdown intraposition), journal de transactions et signaux sautés.
+
+**Limites importantes :** ce lot simule **une seule action à la fois**, et non encore le portefeuille multi-actifs de 24 valeurs. Commissions et slippage sont simplifiés. Historique Yahoo non corrigé/validé des dividendes et splits, univers courant soumis au biais de survivance, aucun change historique. Il ne faut pas traiter ses performances comme une validation de rentabilité ni comme des recommandations d'achat.
+
+### Limites entre V4 et V5
+
+**Reste en V4 :** consolidation des signaux et du score multi-titres, véritable backtest chronologique d'un portefeuille à plusieurs positions avec capital partagé, gestion des stops et frais, tests de robustesse de données et rapport de performance multi-actifs avant promotion de la version.
+
+**V5 seulement :** comparaison structurée et hors échantillon de Weinstein contre **Minervini/SEPA**, **CAN SLIM**, analyse sectorielle et **Price Action** ; Trend Following incorporé comme famille, RSI/MACD indicateurs auxiliaires, SMC/ICT écarté et approche Value distincte. Comparaison après frais et prise en compte des biais de sélection.
+
+Cette version reste strictement **PAPER ONLY**, sans IBKR ni ordre réel.
