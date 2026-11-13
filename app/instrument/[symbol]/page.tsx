@@ -6,6 +6,8 @@ import WeeklyPriceChart from '../../components/WeeklyPriceChart';
 
 type Candle={week:string;lastDay:string;open:number;high:number;low:number;close:number;volume:number;ma30:number|null;volumeAvg10:number|null};
 type Historical={weeks:{week:string;phase:string;reason:string;confirmedBreakout:boolean}[];transitions:{week:string;from:string;to:string;close:number;confirmedBreakout:boolean}[];counts:Record<string,number>;signals:number;forwardOutcomes:{weeks:number;samples:number;averageReturnPct:number|null;positiveRatePct:number|null}[];note:string;methodology:string};
+type BacktestTrade={signalWeek:string;entryWeek:string;exitWeek:string;entryPrice:number;stop:number;exitPrice:number;quantity:number;pnl:number;returnPct:number|null;exitReason:string};
+type PaperBacktest={mode:string;initialCash:number;endCash:number;returnPct:number|null;tradeCount:number;winRatePct:number|null;maxDrawdownPct:number;confirmedSignals:number;holdWeeks:number;fee:number;slippageFraction:number;trades:BacktestTrade[];skipped:{week:string;reason:string}[];disclaimers:string[]};
 type Detail={
  instrument:{id:number;symbol:string;name:string;currency:string};
  benchmark:string|null;asOf:string;latest:{day:string;close:number}|null;marketStatus:string;
@@ -36,6 +38,7 @@ export default function InstrumentDetailPage(){
  const symbol=typeof params.symbol==='string'?params.symbol:'';
  const [detail,setDetail]=useState<Detail|null>(null);
  const [error,setError]=useState(''),[loading,setLoading]=useState(true);
+ const [horizon,setHorizon]=useState(12),[backtest,setBacktest]=useState<PaperBacktest|null>(null),[backtestError,setBacktestError]=useState(''),[backtestBusy,setBacktestBusy]=useState(false);
  useEffect(()=>{
   if(!symbol)return;
   let cancelled=false;
@@ -47,6 +50,21 @@ export default function InstrumentDetailPage(){
    .finally(()=>{if(!cancelled)setLoading(false)});
   return ()=>{cancelled=true};
  },[symbol]);
+ useEffect(()=>{
+  if(!symbol)return;
+  let cancelled=false;
+  setBacktest(null);setBacktestError('');setBacktestBusy(true);
+  fetch('/api/instrument/'+encodeURIComponent(symbol)+'/backtest?weeks='+horizon,{cache:'no-store'})
+   .then(async response=>{
+    const payload=await response.json();
+    if(!response.ok)throw Error(payload.error||'Simulation indisponible');
+    return payload.result as PaperBacktest;
+   })
+   .then(result=>{if(!cancelled)setBacktest(result)})
+   .catch(e=>{if(!cancelled)setBacktestError(String(e))})
+   .finally(()=>{if(!cancelled)setBacktestBusy(false)});
+  return ()=>{cancelled=true};
+ },[symbol,horizon]);
  const state=detail?.assessment;
  const metrics=detail?.metrics;
  const levels=detail?.levels;
@@ -106,6 +124,34 @@ export default function InstrumentDetailPage(){
       <td>{x.positiveRatePct==null?'—':fmt(x.positiveRatePct,1)+' %'}</td></tr>)}</tbody></table></div>
     <p className="muted">Ces chiffres décrivent des cours passés ; il ne s'agit pas d'un backtest de portefeuille. Pas de frais, de change, ni de correction validée des dividendes, splits et biais de survivance.</p>
    </section>}
+   <section className="detail-analysis">
+    <h2>V4 · Backtesting Weinstein (simulation fictive)</h2>
+    <p className="muted">Les signaux sont observés à la clôture hebdomadaire. La simulation entre au cours d'ouverture de la semaine suivante, avec risque théorique 1 %, exposition maximum 25 %, commission et glissement simulés. Portefeuille isolé pour cette seule action ; aucun ordre réel.</p>
+    <div className="chart-toolbar">
+     <strong>Horizon maximum de détention</strong>
+     <div>{[4,8,12,26].map(n=><button key={n} className={horizon===n?'active':''} onClick={()=>setHorizon(n)}>{n} sem.</button>)}</div>
+    </div>
+    {backtestBusy?<p>Calcul de la simulation...</p>:backtestError?<p className="notice" role="alert">{backtestError}</p>:backtest&&<>
+      <div className="detail-metrics">
+       <article><small>Capital théorique final</small><strong>{fmt(backtest.endCash)} €</strong></article>
+       <article><small>Performance brute nette de frais simulés</small><strong>{fmt(backtest.returnPct)} %</strong></article>
+       <article><small>Transactions terminées</small><strong>{backtest.tradeCount}</strong></article>
+       <article><small>Taux de transactions positives</small><strong>{fmt(backtest.winRatePct)} %</strong></article>
+       <article><small>Recul maximum (équité réalisée)</small><strong>{fmt(backtest.maxDrawdownPct)} %</strong></article>
+       <article><small>Signaux hebdomadaires historiques</small><strong>{backtest.confirmedSignals}</strong></article>
+      </div>
+      <h3>Historique des opérations fictives</h3>
+      <div className="table"><table>
+       <thead><tr><th>Signal</th><th>Entrée</th><th>Sortie</th><th>Quantité</th><th>Prix d'entrée</th><th>Prix de sortie</th><th>P&L</th><th>Motif de sortie</th></tr></thead>
+       <tbody>{backtest.trades.length?backtest.trades.slice(-20).reverse().map((t,i)=><tr key={t.signalWeek+'-'+i}>
+        <td>{t.signalWeek}</td><td>{t.entryWeek}</td><td>{t.exitWeek}</td><td>{t.quantity}</td><td>{fmt(t.entryPrice)} €</td><td>{fmt(t.exitPrice)} €</td>
+        <td>{fmt(t.pnl)} €</td><td>{t.exitReason}</td>
+       </tr>):<tr><td colSpan={8}>Aucune transaction fictive admissible avec ces paramètres.</td></tr>}</tbody>
+      </table></div>
+      <p className="muted">{backtest.skipped.length} signaux non traduits en transaction (historique, horizon ou capital insuffisant). Les rendements ne sont pas annualisés.</p>
+      <p className="muted">Limites : portefeuille fictif isolé, univers d'actions survivantes, ajustements historiques non vérifiés, coûts simplifiés et aucune conversion de devise. Cette simulation ne prédit pas les résultats futurs.</p>
+     </>}
+   </section>
    <section className="detail-analysis">
     <h2>Pourquoi ce classement ?</h2>
     <p className="muted">Les critères sont calculés sur des semaines terminées, sans anticiper la prochaine clôture.</p>
