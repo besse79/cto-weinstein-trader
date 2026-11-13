@@ -30,6 +30,19 @@ for(const item of r.json.results){
  assert.ok(item.count>600,item.symbol);
  assert.ok(item.last<=new Date().toISOString().slice(0,10));
 }
+const portfolioResponse=await fetch(base+'/api/portfolio-backtest?weeks=12');
+assert.equal(portfolioResponse.status,200,'Multi-asset portfolio API must return success');
+const portfolio=await portfolioResponse.json();
+assert.equal(portfolio.result.mode,'PAPER_PORTFOLIO_BACKTEST');
+assert.equal(portfolio.result.initialCash,500);
+assert.equal(portfolio.result.maxPositions,4);
+assert.equal(portfolio.result.holdWeeks,12);
+assert.equal(portfolio.result.symbolsAnalyzed,4);
+assert.ok(portfolio.result.equityCurve.length>100);
+assert.ok(portfolio.result.equityCurve.every(p=>p.cash>=-1e-7&&p.openPositions<=4));
+assert.ok(portfolio.result.trades.every(t=>t.entryWeek>t.signalWeek));
+assert.equal((await fetch(base+'/api/portfolio-backtest?weeks=13')).status,400);
+console.log('PASS consolidated 500 EUR portfolio analysis, no future entries or negative cash');
 const scannerResponse=await fetch(base+'/api/scanner');
 assert.equal(scannerResponse.status,200);
 const scanner=await scannerResponse.json();
