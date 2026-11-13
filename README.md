@@ -138,3 +138,19 @@ La branche `feature/weinstein-v4-integrated` poursuit le développement commenc�
 **V5 seulement :** comparaison structurée et hors échantillon de Weinstein contre **Minervini/SEPA**, **CAN SLIM**, analyse sectorielle et **Price Action** ; Trend Following incorporé comme famille, RSI/MACD indicateurs auxiliaires, SMC/ICT écarté et approche Value distincte. Comparaison après frais et prise en compte des biais de sélection.
 
 Cette version reste strictement **PAPER ONLY**, sans IBKR ni ordre réel.
+
+## V4 finale — portefeuille multi-actions fictif partagé
+
+La V4 ajoute **un seul capital fictif de 500 € partagé par toutes les actions françaises EUR actuellement importées**, sans dupliquer les 500 € pour chaque titre. Accessible dans l'onglet **« 03 · Backtest V4 »**, cette simulation est indépendante des ordres fictifs enregistrés dans le portefeuille opérationnel et ne modifie jamais les tables de trading.
+
+- **Signaux chronologiques** : cassure Weinstein validée à la clôture d'une semaine, classement déterministe par force relative et volume connus à cette date, puis entrée uniquement à l'ouverture de la semaine calendaire suivante si une bougie existe.
+- **Gestion du capital** : maximum quatre positions longues simultanées, disponibilité de trésorerie non négative, limite de 25 % de liquidités disponibles et risque théorique de 1 % des liquidités disponibles au moment de l'entrée. Ces limites peuvent réduire l'exposition effective, notamment avec seulement 500 € et des actions non fractionnables.
+- **Exécution fictive** : frais forfaitaires de 0,50 € à chaque achat/vente, glissement 0,1 %, stop défini avec les huit semaines précédentes, sauts sous le stop exécutés au prix d'ouverture, sortie sinon au stop ou après 4/8/12/26 semaines. Les calculs utilisent des bougies hebdomadaires, pas un carnet d'ordres réel.
+- **Performance consolidée** : courbe d'équité marquée aux cours de clôture chaque semaine, drawdown maximum sur cette équité (positions ouvertes incluses), opérations, signalements refusés et nombre de positions ouvertes.
+- **Contrôle chronologique** : vue descriptive en trois périodes fixes, 60 % / 20 % / 20 % de l'historique. Ces périodes ne constituent **pas** un test hors échantillon optimisé.
+- **Données manquantes** : simulation bloquée si une position ouverte traverse une semaine dépourvue de bougie ; jamais de prix de vente inventé.
+- **Périmètre** : uniquement titres EUR pour éviter un change USD/EUR non implémenté. Les titres absents ou périmés sont exclus ; un benchmark EUR disponible et frais est obligatoire.
+
+**Important** : la V4 est une simulation chronologique techniquement testée, **pas une preuve statistique de rentabilité**. Les prix Yahoo (source non officielle) et leurs ajustements splits/dividendes n'ont pas été vérifiés indépendamment. L'univers de titres actuel implique un biais de survivance, et l'ordre d'exécution intrase semaine reste approximatif en OHLC. Le backtest de portefeuille n'envoie aucun ordre, fictif persistant ou réel.
+
+**V5 :** seulement après cette base, comparaison de Minervini/SEPA, CAN SLIM, force sectorielle et Price Action à Weinstein avec protocoles comparables et critères de validation hors échantillon.
