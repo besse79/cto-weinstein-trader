@@ -32,6 +32,9 @@ test('multi-asset V4 shares a SINGLE 500 EUR capital ledger and obeys max four p
  assert.ok(r.orders.filter(x=>x.side==='BUY').length>=2);
  assert.ok(Number.isFinite(r.finalEquity)&&r.finalEquity>=0);
  assert.ok(r.maxDrawdownPct>=0&&r.maxDrawdownPct<=100);
+ assert.deepEqual(r.periods.map(p=>p.name),['EARLY_60','MIDDLE_20','RECENT_20']);
+ assert.equal(r.periods.reduce((sum,p)=>sum+p.weeks,0),r.equityCurve.length);
+ assert.ok(r.periods.every(p=>p.returnPct===null||Number.isFinite(p.returnPct)));
  assert.ok(r.skipped.some(x=>x.reason==='MAX_POSITIONS')||r.orders.filter(x=>x.side==='BUY').length<=4);
 });
 test('order/return invariant to input ticker ordering',()=>{
@@ -65,4 +68,22 @@ test('validates capital, FX, position and horizon parameters',()=>{
  assert.throws(()=>backtestWeinsteinPortfolio(assets,benchmark,{...options,holdWeeks:15}),/Invalid/);
  assert.throws(()=>backtestWeinsteinPortfolio(assets,benchmark,{...options,maxPositions:20}),/Invalid/);
  assert.throws(()=>backtestWeinsteinPortfolio([assets[0],assets[0]],benchmark,options),/Duplicate/);
+});
+
+test('a disappeared candle in an open position blocks rather than fabricating equity',()=>{
+ const altered=assets.map(a=>({...a,daily:[...a.daily]}));
+ // Deliberately delete a week after the synthetic breakout for one of the
+ // instruments that opens a position; this is a data-integrity failure.
+ const baseline=backtestWeinsteinPortfolio(assets,benchmark,options);
+ const bought=baseline.orders.find(o=>o.side==='BUY');
+ assert.ok(bought);
+ const source=altered.find(a=>a.symbol===bought.symbol);
+ const ix=source.daily.findIndex(d=>d.day===bought.week);
+ assert.ok(ix>=0);
+ // Remove a subsequent complete week (unless stop closed on entry week).
+ const trade=baseline.trades.find(t=>t.symbol===bought.symbol&&t.entryWeek===bought.week);
+ if(trade&&trade.exitWeek>bought.week){
+  source.daily.splice(ix+1,1);
+  assert.throws(()=>backtestWeinsteinPortfolio(altered,benchmark,options),/Missing weekly candle/);
+ }
 });
