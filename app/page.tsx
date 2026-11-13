@@ -11,6 +11,7 @@ type Dashboard={mode:string;initial:number;cash:number;equity:number;signals:Sig
 const euro=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 export default function Home(){
  const [tab,setTab]=useState(0),[data,setData]=useState<Dashboard|null>(null),[scans,setScans]=useState<Scan[]>([]),[token,setToken]=useState(''),[message,setMessage]=useState('');
+ const [showToken,setShowToken]=useState(false);
  const [portfolioHorizon,setPortfolioHorizon]=useState(12),[portfolioBacktest,setPortfolioBacktest]=useState<PortfolioBacktest|null>(null),[portfolioBacktestError,setPortfolioBacktestError]=useState(''),[portfolioBusy,setPortfolioBusy]=useState(false);
  const [syncBusy,setSyncBusy]=useState(false),[batches,setBatches]=useState<UniverseBatch[]>([]),[batchIndex,setBatchIndex]=useState(0),[screenView,setScreenView]=useState<'TOP'|'PHASE2'|'PHASE1'|'OTHER'|'MISSING'>('TOP');
  async function load(){try{
@@ -68,8 +69,8 @@ export default function Home(){
  }
  return <main>
   <header><div><h1>CTO Weinstein Trader</h1><small>Stratégie Weinstein · Yahoo Finance (cours non officiels) · Simulation interne</small></div><span className="badge">PAPER ONLY</span></header>
-  <nav><button className={tab===0?'active':''} onClick={()=>setTab(0)}>01 · Trades du matin</button><button className={tab===1?'active':''} onClick={()=>setTab(1)}>02 · Portefeuille / ventes</button><button className={tab===2?'active':''} onClick={()=>{setTab(2);void loadPortfolioBacktest()}}>03 · Backtest V4</button><button onClick={()=>void load()}>Actualiser</button></nav>
-  <label>Jeton local <input aria-label="Jeton local" type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="APP_TOKEN"/></label>
+  <nav><button className={tab===0?'active':''} onClick={()=>setTab(0)}>01 · Trades du matin</button><button className={tab===1?'active':''} onClick={()=>setTab(1)}>02 · Portefeuille</button><button className={tab===2?'active':''} onClick={()=>{setTab(2);void loadPortfolioBacktest()}}>03 · Backtest V4</button><button title="Recharge les données locales affichées, sans contacter Yahoo Finance" onClick={()=>{void load();if(tab===2)void loadPortfolioBacktest()}}>Actualiser l’affichage</button></nav>
+  
   {message&&<div className="notice" role="status">{message}</div>}
   {data?.error&&<div className="notice" role="alert">PostgreSQL indisponible : {data.error}</div>}
   <div className="cards"><article><small>Capital initial fictif</small><h2>{euro(data?.initial)}</h2></article><article><small>Liquidités paper</small><h2>{euro(data?.cash)}</h2></article><article><small>Valorisation indicative</small><h2>{euro(data?.equity)}</h2></article></div>
@@ -82,6 +83,10 @@ export default function Home(){
       </select>
     </label>
     <p className="muted">{batches[batchIndex]?.instruments.map(i=>i.name+' ('+i.symbol+')'+(i.bars?' · '+i.bars+' séances':' · À importer')).join(' · ')||'Chargement des lots...'}</p>
+    {!token&&<button type="button" onClick={()=>setShowToken(true)}>Autoriser un import manuel</button>}
+    {showToken&&<label>Jeton APP_TOKEN (import et ventes fictives)
+      <input aria-label="Jeton de sécurité local" type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} placeholder="Saisir le jeton uniquement pour une opération protégée"/>
+    </label>}
     <button disabled={syncBusy||!token||!batches[batchIndex]} onClick={()=>void syncYahoo()}>
       {syncBusy?'Synchronisation en cours...':'Importer ce lot Yahoo'}
     </button>
@@ -157,7 +162,12 @@ export default function Home(){
       <p className="muted">Limites : univers actuel soumis au biais de survivance, cours Yahoo non corrigés indépendamment des splits/dividendes, hypothèses simplifiées de prix d'exécution et d'ordre intrase semaine, aucun impôt ni change historique. Simulation non prédictive.</p>
     </>}
   </section>:
-  <section><h2>Portefeuille et ventes fictives</h2><div className="table"><table><thead><tr><th>Valeur</th><th>Quantité</th><th>PRU</th><th>Cours</th><th>Stop</th><th>Signal</th><th>Action</th></tr></thead><tbody>{data?.positions.length?data.positions.map(p=><tr key={p.id}><td>{p.name}<small>{p.symbol}</small></td><td>{p.qty}</td><td>{euro(p.avg)}</td><td>{euro(p.last)}</td><td>{euro(p.stop)}</td><td>{p.alert}</td><td><button disabled={!token||p.last==null} onClick={()=>void order(p,'SELL')}>Vendre paper</button></td></tr>):<tr><td colSpan={7}>Aucune position ouverte</td></tr>}</tbody></table></div>
+  <section><h2>Portefeuille</h2>
+  {Boolean(data?.positions.length)&&!token&&<button type="button" onClick={()=>setShowToken(true)}>Autoriser une vente fictive</button>}
+  {Boolean(data?.positions.length)&&showToken&&<label>Jeton APP_TOKEN (ventes fictives)
+    <input aria-label="Jeton de sécurité local" type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} placeholder="Jeton nécessaire uniquement pour une vente"/>
+  </label>}
+  <div className="table"><table><thead><tr><th>Valeur</th><th>Quantité</th><th>PRU</th><th>Cours</th><th>Stop</th><th>Signal</th><th>Action</th></tr></thead><tbody>{data?.positions.length?data.positions.map(p=><tr key={p.id}><td>{p.name}<small>{p.symbol}</small></td><td>{p.qty}</td><td>{euro(p.avg)}</td><td>{euro(p.last)}</td><td>{euro(p.stop)}</td><td>{p.alert}</td><td><button disabled={!token||p.last==null} onClick={()=>void order(p,'SELL')}>Vendre paper</button></td></tr>):<tr><td colSpan={7}>Aucune position ouverte</td></tr>}</tbody></table></div>
   <h2>Historique paper</h2><div className="table"><table><thead><tr><th>Date</th><th>Instrument</th><th>Opération</th><th>Quantité</th><th>Prix</th></tr></thead><tbody>{data?.orders.map(o=><tr key={o.id}><td>{new Date(o.created_at).toLocaleString('fr-FR')}</td><td>{o.symbol}</td><td>{o.side}</td><td>{o.qty}</td><td>{euro(Number(o.price))}</td></tr>)}</tbody></table></div></section>}
  </main>;
 }
