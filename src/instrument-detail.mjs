@@ -1,6 +1,7 @@
 import {aggregateWeeks,scanWeinstein} from './weinstein.mjs';
 import {explainSetup} from './weinstein-explain.mjs';
 import {assessWatch} from './weinstein-watch.mjs';
+import {analyzeHistoricalPhases} from './weinstein-history.mjs';
 
 /** Compute completed-week chart and decision metrics from stored OHLCV only. */
 export function buildInstrumentDetail(daily,benchmarkDaily,{asOf=new Date().toISOString().slice(0,10)}={}){
@@ -10,6 +11,7 @@ export function buildInstrumentDetail(daily,benchmarkDaily,{asOf=new Date().toIS
  d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
  const thisWeek=d.toISOString().slice(0,10);
  const completed=w.filter(x=>x.week<thisWeek&&x.lastDay<=asOf);
+ const historical=analyzeHistoricalPhases(daily,benchmarkDaily,{asOf});
  const week=completed.map((x,i)=>{
   const ma30=i>=29?completed.slice(i-29,i+1).reduce((a,v)=>a+v.close,0)/30:null;
   const volumeAvg10=i>=10?completed.slice(i-10,i).reduce((a,v)=>a+v.volume,0)/10:null;
@@ -17,7 +19,7 @@ export function buildInstrumentDetail(daily,benchmarkDaily,{asOf=new Date().toIS
    close:x.close,volume:x.volume,ma30,volumeAvg10};
  });
  if(!week.length)return {weeks:[],indicators:null,levels:null,highlight:null,latestDay:null,
-  watch:null,assessment:{signal:'INSUFFICIENT_HISTORY',eligible:false,reasons:['Aucune semaine clôturée disponible']}};
+  watch:null,historical,assessment:{signal:'INSUFFICIENT_HISTORY',eligible:false,reasons:['Aucune semaine clôturée disponible']}};
  const raw=scanWeinstein(daily,{asOf,benchmarkDaily});
  const last=week.at(-1);
  const assessment=explainSetup({...raw,lastClose:raw.lastCompletedClose});
@@ -39,7 +41,7 @@ export function buildInstrumentDetail(daily,benchmarkDaily,{asOf=new Date().toIS
  }:isBreakout?{
   type:'LATEST_BREAKOUT',from:last.week,to:last.week
  }:null;
- return {weeks:week.slice(-156),indicators:raw,levels,highlight,watch,
+ return {weeks:week.slice(-156),indicators:raw,levels,highlight,watch,historical,
   latestDay:last.lastDay,assessment,
-  explanation:'Les zones indiquent la configuration du dernier scan, pas une classification rétrospective des phases 1 à 4.'};
+  explanation:'La frise V3 reconstitue des régimes heuristiques sur les clôtures hebdomadaires passées ; elle n’est ni une vérité de marché ni une prévision.'};
 }
