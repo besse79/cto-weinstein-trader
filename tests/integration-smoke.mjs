@@ -50,8 +50,11 @@ r=await post('/api/orders',{instrumentId:1,side:'BUY',qty:1,price:100,stop:95,fe
 check(r.status===400,'Duplicate paper position rejected');
 r=await post('/api/orders',{instrumentId:1,side:'SELL',qty:2,price:100,fee:0});
 check(r.status===400,'Overselling blocked');
-r=await post('/api/orders',{instrumentId:1,side:'SELL',qty:1,price:100,fee:0});
-check(r.status===200,'Valid paper sell');
+r=await api('/api/local-actions',{method:'POST',headers:{Origin:'https://invalid.example'},body:JSON.stringify({action:'sell',instrumentId:1,qty:1,price:100})});
+check(r.status===403,'Local paper sale refuses cross-origin request');
+r=await api('/api/local-actions',{method:'POST',headers:{Origin:'http://127.0.0.1:3010'},body:JSON.stringify({action:'sell',instrumentId:1,qty:1,price:100})});
+check(r.status===200&&r.body.mode==='PAPER','Tokenless local same-origin paper sale allowed');
+
 r=await api('/api/dashboard');
 check(r.body.positions.length===0 && almost(r.body.cash,500),'Round-trip returns 500 EUR with zero fee');
 check(r.body.orders.length===2,'Two paper ledger transactions recorded');
