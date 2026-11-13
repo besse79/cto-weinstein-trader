@@ -10,7 +10,7 @@ function weekly(prices,volumes=prices.map(()=>10000)){
  }));
 }
 const prices=Array.from({length:110},(_,i)=>i<43?160-i*1.08:113+(i-43)*.08);
-prices[80]=130;
+prices[80]=118;
 const volume=prices.map((_,i)=>i===80?50000:10000);
 const benchmark=weekly(prices.map((_,i)=>100+i*.01));
 const assets=[{symbol:'A.PA',currency:'EUR',daily:weekly(prices,volume)},
