@@ -100,3 +100,20 @@ Le statut `PROVISIONAL_BREAKOUT` apparaît uniquement si un **cours quotidien cl
 La page du scanner s'ouvre sur les **cinq meilleures configurations disposant de données fraîches** (tri par score de veille). Des onglets séparent les entrées phase 2, bases de phase 1, autres profils et **données absentes/périmées**. Aucune valeur sans historique suffisant ou benchmark valable n'obtient de score de veille.
 
 La fiche détaillée peut afficher une marque distincte du dernier cours quotidien et de la résistance de veille, **sans incorporer cette séance à la courbe des semaines closes**. La cotation n'est pas garantie comme temps réel : elle dépend du dernier import Yahoo manuel. Aucune collecte automatique, aucun ordre réel, capital paper 500 EUR conservé.
+
+## V3 — Reconstitution historique des phases Weinstein
+
+La fiche individuelle restitue une **estimation heuristique**, semaine par semaine, des phases :
+- **Phase 1** : base contenue, MM30 stabilisée après un repli, force relative suffisamment soutenue.
+- **Phase 2** : cassure sur une clôture hebdomadaire avec volume, force relative et base suffisants ; prolongation de la tendance tant que les contrôles restent cohérents.
+- **Phase 3** : consolidation et ralentissement de MM30 après une phase 2 identifiée.
+- **Phase 4** : cours sous la MM30 avec pente négative.
+- **Non classée** : données insuffisantes, benchmark manquant ou configuration ambiguë.
+
+Chaque étape utilise uniquement les bougies et références **disponibles jusqu'à sa clôture hebdomadaire** (pas d'anticipation de données). La frise colore les intervalles sur le graphique des prix et montre les points de cassure confirmée. Les transitions précédentes sont consultables sous le graphique.
+
+Un tableau descriptif affiche, pour chaque cassure historiquement détectée, les rendements bruts de l'action après **4, 8 et 12 semaines**, uniquement si l'horizon est entièrement observé. Il ne s'agit **pas d'un backtest de portefeuille** : absence de frais et slippage, ajustements splits/dividendes non vérifiés, biais de survivance de l'univers actuel, absence de conversion FX, et aucun modèle de passage d'ordres. Le taux positif et le rendement moyen ne prédisent aucun résultat futur.
+
+La nouvelle fonctionnalité est **en lecture seule**, calculée depuis les historiques PostgreSQL existants. Aucun nouvel accès Yahoo, aucune migration de données, aucune commande de courtier, et le portefeuille demeure fictif à **500 €**.
+
+Commande WSL après CI verte : `cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py`.

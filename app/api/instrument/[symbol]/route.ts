@@ -28,6 +28,7 @@ export async function GET(_request:Request,{params}:{params:Promise<{symbol:stri
      status==='NO_BENCHMARK'?'Indice de référence absent':'Indice de référence périmé']:result.assessment.reasons;
   return Response.json({instrument,benchmark:reference,asOf,latest:last?{day:last.day,close:last.close}:null,
    marketStatus:status??'READY',series:result.weeks,levels:result.levels,
+   historical:status?null:result.historical,
    watch:status?null:result.watch,
    highlight:status?null:result.highlight,assessment:{
     ...result.assessment,signal:status??result.assessment.signal,
