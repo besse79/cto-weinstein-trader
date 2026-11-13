@@ -48,7 +48,7 @@ test('no benchmark never fabricates phase-1/2/3/4 states',()=>{
 });
 
 test('a weekly volume-confirmed breakout yields descriptive outcomes only when horizon completed',()=>{
- const p=Array.from({length:95},(_,i)=>i<43?160-i*1.08:114+(i%3)*.1);
+ const p=Array.from({length:95},(_,i)=>i<43?160-i*1.08:113+(i-43)*.08);
  p[80]=130;
  const v=p.map((_,i)=>i===80?50000:10000);
  const bm=p.map((_,i)=>100+i*.01);
