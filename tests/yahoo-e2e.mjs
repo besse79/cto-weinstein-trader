@@ -112,6 +112,23 @@ r=await post('/api/market/sync',{symbols:['AC.PA','AC.PA']});
 assert.equal(r.status,400,'Duplicate symbols must be refused');
 r=await post('/api/market/sync',{symbols:Array(7).fill('AC.PA')});
 assert.equal(r.status,400,'No more than six tickers per request');
+async function localAction(body,origin='http://127.0.0.1:3010'){
+ const response=await fetch(base+'/api/local-actions',{method:'POST',headers:{
+  'Content-Type':'application/json',...(origin?{Origin:origin}:{})
+ },body:JSON.stringify(body)});
+ return {status:response.status,json:await response.json()};
+}
+let local=await localAction({action:'sync',symbols:['AC.PA']},null);
+assert.equal(local.status,403,'Missing browser origin must be refused');
+local=await localAction({action:'sync',symbols:['AC.PA']},'https://untrusted.example');
+assert.equal(local.status,403,'Cross-site caller must be refused');
+local=await localAction({action:'sync',symbols:['BAD.PA']});
+assert.equal(local.status,404,'Local UI action retains existing whitelist validation');
+local=await localAction({action:'sync',symbols:['AC.PA']});
+assert.equal(local.status,200,'Local same-origin UI can import without sending APP_TOKEN');
+assert.equal(local.json.results.length,1);
+local=await localAction({action:'withdraw',symbols:['AC.PA']});
+assert.equal(local.status,400,'Local UI endpoint only supports explicit PAPER actions');
 const dashboard=await (await fetch(base+'/api/dashboard')).json();
 assert.equal(dashboard.mode,'PAPER');
 assert.equal(dashboard.initial,500);

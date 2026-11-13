@@ -24,7 +24,7 @@ Le panneau « Trades du matin » propose un **import manuel** de cinq années de
 - Benchmark EUR : `EXSA.DE` (ETF STOXX Europe 600 en EUR).
 - Benchmark USD : `SPY` (ETF S&P 500 en USD ; uniquement benchmark).
 
-Pour importer : saisir le **APP_TOKEN local** présent dans `.env` (ne jamais le publier), puis cliquer « Importer les historiques Yahoo (5 ans) ». L'application conserve l'historique dans PostgreSQL, calcule la moyenne mobile hebdomadaire 30 semaines, le volume et la force relative pour les **semaines clôturées**. Aucune transaction n'est générée par un import.
+Pour importer : sélectionner un lot dans « Trades du matin » puis cliquer directement sur **« Importer ce lot Yahoo »**. Aucune saisie de jeton dans le navigateur. L'application conserve l'historique dans PostgreSQL, calcule la moyenne mobile hebdomadaire 30 semaines, le volume et la force relative pour les **semaines clôturées**. Aucune transaction n'est générée par un import.
 
 ### Fiabilité et restrictions
 
@@ -154,3 +154,11 @@ La V4 ajoute **un seul capital fictif de 500 € partagé par toutes les actions
 **Important** : la V4 est une simulation chronologique techniquement testée, **pas une preuve statistique de rentabilité**. Les prix Yahoo (source non officielle) et leurs ajustements splits/dividendes n'ont pas été vérifiés indépendamment. L'univers de titres actuel implique un biais de survivance, et l'ordre d'exécution intrase semaine reste approximatif en OHLC. Le backtest de portefeuille n'envoie aucun ordre, fictif persistant ou réel.
 
 **V5 :** seulement après cette base, comparaison de Minervini/SEPA, CAN SLIM, force sectorielle et Price Action à Weinstein avec protocoles comparables et critères de validation hors échantillon.
+
+## Interface locale sans saisie de jeton
+
+L'application est liée par Docker à **127.0.0.1:3010** uniquement. Une action explicite du navigateur (import Yahoo ou vente fictive) est transmise à `POST /api/local-actions`. Ce point d'entrée vérifie que l'hôte est exactement `localhost:3010` ou `127.0.0.1:3010`, que l'en-tête `Origin` correspond exactement à cet hôte, et rejette les appels intersites. Le secret `APP_TOKEN` est lu côté serveur dans `.env` et utilisé uniquement pour déléguer aux endpoints déjà protégés ; il n'est jamais injecté dans du JavaScript navigateur ni retourné dans la réponse HTTP.
+
+Les endpoints `POST /api/orders` et `POST /api/market/sync` **conservent leur contrôle d'authentification**. Le nouveau point d'entrée n'autorise que `sync` (import manuel d'une liste existante de maximum six symboles) et `sell` (vente PAPER). L'enregistrement d'un nouvel achat ne passe pas par ce point d'entrée.
+
+**Portée de sécurité** : cette configuration est prévue pour **un poste utilisateur de confiance**, non pour un serveur partagé. Toute application ou utilisateur ayant un accès local direct au port peut tenter d'agir ; le mécanisme empêche surtout les appels de pages externes et le transport du secret vers le navigateur. Ne pas publier le port Docker sur `0.0.0.0`, ni exposer l'application par reverse proxy sans authentification supplémentaire. L'import reste manuel, sans programmation.
