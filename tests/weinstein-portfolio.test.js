@@ -78,7 +78,11 @@ test('a disappeared candle in an open position blocks rather than fabricating eq
  const bought=baseline.orders.find(o=>o.side==='BUY');
  assert.ok(bought);
  const source=altered.find(a=>a.symbol===bought.symbol);
- const ix=source.daily.findIndex(d=>d.day===bought.week);
+ const ix=source.daily.findIndex(d=>{
+  const date=new Date(d.day+'T12:00:00Z');
+  date.setUTCDate(date.getUTCDate()-(date.getUTCDay()+6)%7);
+  return date.toISOString().slice(0,10)===bought.week;
+ });
  assert.ok(ix>=0);
  // Remove a subsequent complete week (unless stop closed on entry week).
  const trade=baseline.trades.find(t=>t.symbol===bought.symbol&&t.entryWeek===bought.week);
