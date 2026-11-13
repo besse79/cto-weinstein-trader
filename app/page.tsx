@@ -11,7 +11,6 @@ type Dashboard={mode:string;initial:number;cash:number;equity:number;signals:Sig
 const euro=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 export default function Home(){
  const [tab,setTab]=useState(0),[data,setData]=useState<Dashboard|null>(null),[scans,setScans]=useState<Scan[]>([]),[token,setToken]=useState(''),[message,setMessage]=useState('');
- const [showToken,setShowToken]=useState(false);
  const [portfolioHorizon,setPortfolioHorizon]=useState(12),[portfolioBacktest,setPortfolioBacktest]=useState<PortfolioBacktest|null>(null),[portfolioBacktestError,setPortfolioBacktestError]=useState(''),[portfolioBusy,setPortfolioBusy]=useState(false);
  const [syncBusy,setSyncBusy]=useState(false),[batches,setBatches]=useState<UniverseBatch[]>([]),[batchIndex,setBatchIndex]=useState(0),[screenView,setScreenView]=useState<'TOP'|'PHASE2'|'PHASE1'|'OTHER'|'MISSING'>('TOP');
  async function load(){try{
@@ -26,14 +25,13 @@ export default function Home(){
  }catch{setMessage('API indisponible')}}
  useEffect(()=>{void load()},[]);
  async function syncYahoo(){
-  if(!token){setMessage('Jeton local APP_TOKEN requis pour importer les cotations');return}
   const batch=batches[batchIndex];
   if(!batch?.symbols.length){setMessage('Aucun lot de surveillance disponible');return}
   setSyncBusy(true);setMessage('Import des historiques en cours...');
   try{
-   const response=await fetch('/api/market/sync',{method:'POST',
-    headers:{'Content-Type':'application/json','x-app-token':token},
-    body:JSON.stringify({symbols:batch.symbols})});
+   const response=await fetch('/api/local-actions',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'sync',symbols:batch.symbols})});
    const result=await response.json();
    if(!response.ok){setMessage('Import bloqué : '+(result.detail||result.error||'Yahoo indisponible'));return}
    setMessage('Lot '+(batchIndex+1)+' importé : '+result.results.length+' instruments, '+result.total+' bougies journalières. Aucune transaction générée.');
@@ -64,7 +62,7 @@ export default function Home(){
   const q=Number(prompt('Quantité paper à vendre',String(p.qty)));
   if(!Number.isFinite(q)||q<=0||q>p.qty)return;
   if(!confirm('Confirmer la vente fictive de '+q+' × '+p.symbol+' ?'))return;
-  const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json','x-app-token':token},body:JSON.stringify({instrumentId:p.id,qty:q,price:p.last,side,fee:0})});
+  const r=await fetch('/api/local-actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sell',instrumentId:p.id,qty:q,price:p.last})});
   const j=await r.json();setMessage(j.ok?'Vente paper enregistrée':j.error||'Erreur');await load();
  }
  return <main>
@@ -83,11 +81,7 @@ export default function Home(){
       </select>
     </label>
     <p className="muted">{batches[batchIndex]?.instruments.map(i=>i.name+' ('+i.symbol+')'+(i.bars?' · '+i.bars+' séances':' · À importer')).join(' · ')||'Chargement des lots...'}</p>
-    {!token&&<button type="button" onClick={()=>setShowToken(true)}>Autoriser un import manuel</button>}
-    {showToken&&<label>Jeton APP_TOKEN (import et ventes fictives)
-      <input aria-label="Jeton de sécurité local" type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} placeholder="Saisir le jeton uniquement pour une opération protégée"/>
-    </label>}
-    <button disabled={syncBusy||!token||!batches[batchIndex]} onClick={()=>void syncYahoo()}>
+    <button disabled={syncBusy||!batches[batchIndex]} onClick={()=>void syncYahoo()}>
       {syncBusy?'Synchronisation en cours...':'Importer ce lot Yahoo'}
     </button>
     <p className="muted">Chaque import est atomique pour le lot sélectionné. Si un symbole échoue, aucune donnée de ce lot n'est écrite. Source Yahoo non officielle ; usage personnel et conditions du fournisseur à respecter.</p>
@@ -163,11 +157,7 @@ export default function Home(){
     </>}
   </section>:
   <section><h2>Portefeuille</h2>
-  {Boolean(data?.positions.length)&&!token&&<button type="button" onClick={()=>setShowToken(true)}>Autoriser une vente fictive</button>}
-  {Boolean(data?.positions.length)&&showToken&&<label>Jeton APP_TOKEN (ventes fictives)
-    <input aria-label="Jeton de sécurité local" type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} placeholder="Jeton nécessaire uniquement pour une vente"/>
-  </label>}
-  <div className="table"><table><thead><tr><th>Valeur</th><th>Quantité</th><th>PRU</th><th>Cours</th><th>Stop</th><th>Signal</th><th>Action</th></tr></thead><tbody>{data?.positions.length?data.positions.map(p=><tr key={p.id}><td>{p.name}<small>{p.symbol}</small></td><td>{p.qty}</td><td>{euro(p.avg)}</td><td>{euro(p.last)}</td><td>{euro(p.stop)}</td><td>{p.alert}</td><td><button disabled={!token||p.last==null} onClick={()=>void order(p,'SELL')}>Vendre paper</button></td></tr>):<tr><td colSpan={7}>Aucune position ouverte</td></tr>}</tbody></table></div>
+  <div className="table"><table><thead><tr><th>Valeur</th><th>Quantité</th><th>PRU</th><th>Cours</th><th>Stop</th><th>Signal</th><th>Action</th></tr></thead><tbody>{data?.positions.length?data.positions.map(p=><tr key={p.id}><td>{p.name}<small>{p.symbol}</small></td><td>{p.qty}</td><td>{euro(p.avg)}</td><td>{euro(p.last)}</td><td>{euro(p.stop)}</td><td>{p.alert}</td><td><button disabled={p.last==null} onClick={()=>void order(p,'SELL')}>Vendre paper</button></td></tr>):<tr><td colSpan={7}>Aucune position ouverte</td></tr>}</tbody></table></div>
   <h2>Historique paper</h2><div className="table"><table><thead><tr><th>Date</th><th>Instrument</th><th>Opération</th><th>Quantité</th><th>Prix</th></tr></thead><tbody>{data?.orders.map(o=><tr key={o.id}><td>{new Date(o.created_at).toLocaleString('fr-FR')}</td><td>{o.symbol}</td><td>{o.side}</td><td>{o.qty}</td><td>{euro(Number(o.price))}</td></tr>)}</tbody></table></div></section>}
  </main>;
 }
