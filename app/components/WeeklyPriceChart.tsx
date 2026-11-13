@@ -5,11 +5,13 @@ type Candle={week:string;lastDay:string;open:number;high:number;low:number;close
 type Levels={resistance26:number;support8:number;ma30:number;baseHigh:number;baseLow:number}|null;
 type Highlight={type:string;from:string;to:string}|null;
 type DailyMarker={day:string;close:number}|null;
+type PhaseWeek={week:string;phase:string;reason:string;confirmedBreakout:boolean};
+const PHASE_COLORS:Record<string,string>={PHASE1:'#4e98dc',PHASE2:'#35b98b',PHASE3:'#f4ba5a',PHASE4:'#e27988'};
 const num=(x:number)=>x.toLocaleString('fr-FR',{maximumFractionDigits:0});
 const WIDTH=1020,PRICE_H=385,VOL_H=150,LEFT=70,RIGHT=30;
 
-export default function WeeklyPriceChart({series,levels,highlight,dailyMarker=null,watchResistance=null,currency='EUR'}:{
- series:Candle[];levels:Levels;highlight:Highlight;dailyMarker?:DailyMarker;watchResistance?:number|null;currency?:string
+export default function WeeklyPriceChart({series,levels,highlight,dailyMarker=null,watchResistance=null,phases=[],currency='EUR'}:{
+ series:Candle[];levels:Levels;highlight:Highlight;dailyMarker?:DailyMarker;watchResistance?:number|null;phases?:PhaseWeek[];currency?:string
 }){
  const [hover,setHover]=useState<number|null>(null);
  const [windowWeeks,setWindowWeeks]=useState(104);
@@ -31,10 +33,13 @@ export default function WeeklyPriceChart({series,levels,highlight,dailyMarker=nu
   const maPath=data.map((d,i)=>d.ma30==null?null:{x:x(i),y:y(d.ma30)})
    .filter((p):p is {x:number;y:number}=>p!==null)
    .map((p,i)=>(i?'L':'M')+p.x.toFixed(2)+' '+p.y.toFixed(2)).join(' ');
+  const stageLookup=new Map(phases.map(s=>[s.week,s.phase]));
+  const phaseBars=data.map((d,i)=>({phase:stageLookup.get(d.week)||'UNCLASSIFIED',i}));
+  const breakoutPoints=phases.filter(s=>s.confirmedBreakout).map(s=>data.findIndex(d=>d.week===s.week)).filter(i=>i>=0);
   const idx=highlight?.type==='CURRENT_BASE'?data.findIndex(d=>d.week>=highlight.from):-1;
   const breakout=highlight?.type==='LATEST_BREAKOUT'?data.findIndex(d=>d.week===highlight.from):-1;
-  return {min,max,x,y,volumeY,maxVolume,pricePath,maPath,idx,breakout};
- },[data,levels,highlight,dailyMarker,watchResistance]);
+  return {min,max,x,y,volumeY,maxVolume,pricePath,maPath,idx,breakout,phaseBars,breakoutPoints};
+ },[data,levels,highlight,dailyMarker,watchResistance,phases]);
  if(!chart||!data.length)return <p className="muted">Aucune cotation hebdomadaire disponible. Importer l'historique Yahoo pour ce titre.</p>;
  const active=hover===null?data.length-1:Math.max(0,Math.min(hover,data.length-1));
  const latest=data[active];
@@ -55,6 +60,13 @@ export default function WeeklyPriceChart({series,levels,highlight,dailyMarker=nu
      const screenX=(e.clientX-b.left)/b.width*WIDTH;
      setHover(Math.max(0,Math.min(data.length-1,Math.round((screenX-LEFT)/(WIDTH-LEFT-RIGHT)*(data.length-1)))));
     }}>
+    {chart.phaseBars.map(({phase,i})=>{
+     const color=PHASE_COLORS[phase];
+     if(!color)return null;
+     const space=(WIDTH-LEFT-RIGHT)/Math.max(1,data.length-1);
+     const xx=Math.max(LEFT,chart.x(i)-space/2);
+     return <rect key={'phase-'+i} x={xx} y={9} width={Math.min(space,WIDTH-RIGHT-xx)} height={PRICE_H-37} fill={color} opacity=".13"/>;
+    })}
     {Array.from({length:5},(_,i)=>{
      const value=chart.max-(chart.max-chart.min)*i/4;
      return <g key={i}><line x1={LEFT} y1={chart.y(value)} x2={WIDTH-RIGHT} y2={chart.y(value)} stroke="#304357" strokeDasharray="3 6"/><text x={LEFT-8} y={chart.y(value)+4} textAnchor="end" fontSize="12" fill="#a6bacb">{value.toFixed(1)}</text></g>;
@@ -74,6 +86,9 @@ export default function WeeklyPriceChart({series,levels,highlight,dailyMarker=nu
     </>}
     <path d={chart.pricePath} fill="none" stroke="#9cbbf4" strokeWidth="2.4" strokeLinejoin="round"/>
     {chart.maPath&&<path d={chart.maPath} fill="none" stroke="#ffc467" strokeWidth="2.4" strokeLinejoin="round"/>}
+    {chart.breakoutPoints.map(i=><g key={'historical-break-'+i}>
+     <circle cx={chart.x(i)} cy={chart.y(data[i].close)} r="5" fill="#53d9ae" stroke="#e7fff6" strokeWidth="1.5"/>
+    </g>)}
     {chart.breakout>=0&&<g><circle cx={chart.x(chart.breakout)} cy={chart.y(data[chart.breakout].close)} r="7" fill="#53c9a4" stroke="#e7fff6" strokeWidth="2"/><text x={Math.max(LEFT+75,chart.x(chart.breakout)-6)} y={chart.y(data[chart.breakout].close)-18} textAnchor="end" fontSize="13" fill="#7ce3c2">Cassure</text></g>}
     <line x1={chart.x(active)} x2={chart.x(active)} y1="16" y2={PRICE_H-18} stroke="#adc2de" strokeOpacity=".6" strokeDasharray="3 4"/>
     <circle cx={chart.x(active)} cy={chart.y(latest.close)} r="4" fill="#fff"/>
@@ -95,6 +110,6 @@ export default function WeeklyPriceChart({series,levels,highlight,dailyMarker=nu
    </svg>
   </div>
   <div className="chart-inspector"><span>Semaine {latest.week}</span><span>Volume : {num(latest.volume)}</span><span>Moyenne 10 sem. : {latest.volumeAvg10==null?'—':num(latest.volumeAvg10)}</span></div>
-  <p className="muted">Le graphique contient exclusivement les semaines clôturées. Les annotations correspondent à la configuration actuelle : les anciennes phases ne sont pas reconstituées artificiellement. Devise des prix : {label}.</p>
+  <p className="muted">Les fonds de couleur et points de cassure sont des classifications historiques **heuristiques**, calculées sans données postérieures à chaque semaine. Les périodes ambiguës restent sans fond. Le graphique contient exclusivement les semaines clôturées. Les annotations correspondent à la configuration actuelle : les anciennes phases ne sont pas reconstituées artificiellement. Devise des prix : {label}.</p>
  </div>;
 }
