@@ -196,6 +196,8 @@ jobs:
         run: |
           latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
           printf 'RESTORE\n' | python3 restore.py "$latest" --apply
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 26
+          docker compose -p cto_weinstein exec -T db psql -U trader -d postgres -Atc "SELECT COUNT(*) FROM pg_database WHERE datname LIKE 'trader_previous_%'" | grep -Fx 1
           for i in $(seq 1 30); do
             if curl -fsS --max-time 3 http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500'; then exit 0; fi
             sleep 2
