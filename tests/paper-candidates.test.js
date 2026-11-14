@@ -70,3 +70,17 @@ test('Monday cannot purchase a breakout formed from partial prior-week Thursday 
  assert.ok(incomplete.candidates[0].reasons.includes('PREVIOUS_WEEK_QUOTE_INCOMPLETE'));
  assert.ok(incomplete.candidates[0].reasons.includes('PREVIOUS_WEEK_BENCHMARK_INCOMPLETE'));
 });
+
+test('Saturday and Sunday show the same confirmed Friday breakouts for weekend review',()=>{
+ for(const asOf of ['2026-11-14','2026-11-15']){
+  const summary=run([make()],{asOf});
+  assert.equal(summary.signalWeekExpected,'2026-11-09');
+  assert.equal(summary.eligibleCount,1);
+  assert.equal(summary.candidates[0].quoteDay,friday);
+ }
+});
+test('Friday cannot treat its own still-open ISO week as a completed signal',()=>{
+ const summary=run([make()],{asOf:'2026-11-13'});
+ assert.equal(summary.eligibleCount,0);
+ assert.ok(summary.candidates[0].reasons.includes('SIGNAL_NOT_PREVIOUS_WEEK'));
+});
