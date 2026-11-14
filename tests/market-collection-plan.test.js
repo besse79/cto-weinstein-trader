@@ -42,3 +42,12 @@ test('rejects unsupported and pathological collection plans',()=>{
  assert.throws(()=>selectMarketBatches(rows,'UNKNOWN','2026-11-16'),/Invalid/);
  assert.throws(()=>selectMarketBatches(rows,'EU_CLOSE','2026-11-16',{maxSymbols:1000}),/Invalid/);
 });
+
+test('outages exceeding 60 days force 5-year refill rather than short delta window',()=>{
+ const old=[{symbol:'EXSA.DE',currency:'EUR',bars:1200,last_day:'2026-07-01'}];
+ const p=selectMarketBatches(old,'BOOTSTRAP','2026-11-14');
+ assert.deepEqual(p.groups,[{mode:'history',symbols:['EXSA.DE']}]);
+ const future=selectMarketBatches([{...old[0],last_day:'2026-12-01'}],
+  'BOOTSTRAP','2026-11-14');
+ assert.deepEqual(future.groups,[{mode:'history',symbols:['EXSA.DE']}]);
+});
