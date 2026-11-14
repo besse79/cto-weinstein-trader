@@ -1,6 +1,7 @@
 import {NextRequest} from 'next/server';
 import {POST as sync} from '../market/sync/route';
 import {POST as order} from '../orders/route';
+import {POST as paperEntry} from '../paper-entry/route';
 
 export const dynamic='force-dynamic';
 const localHosts=new Set(['localhost:3010','127.0.0.1:3010']);
@@ -29,10 +30,10 @@ export async function POST(request:NextRequest){
    return Response.json({error:'Invalid JSON action'},{status:400});
   payload=parsed as Record<string,unknown>;
  }catch{return Response.json({error:'Invalid JSON action'},{status:400})}
- if(payload.action!=='sync'&&payload.action!=='sell')
+ if(payload.action!=='sync'&&payload.action!=='sell'&&payload.action!=='buy')
   return Response.json({error:'Unsupported action'},{status:400});
  const action=payload.action;
- const body=action==='sync'?{symbols:payload.symbols}:{
+ const body=action==='buy'?{symbol:payload.symbol}:action==='sync'?{symbols:payload.symbols}:{
   instrumentId:payload.instrumentId,qty:payload.qty,price:payload.price,
   side:'SELL',fee:0
  };
@@ -43,5 +44,5 @@ export async function POST(request:NextRequest){
  const internal=new NextRequest(request.url,{
   method:'POST',headers,body:JSON.stringify(body)
  });
- return action==='sync'?sync(internal):order(internal);
+ return action==='sync'?sync(internal):action==='buy'?paperEntry(internal):order(internal);
 }
