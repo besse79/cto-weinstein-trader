@@ -1,3 +1,4 @@
+import {parisClock} from '../../../src/market-collection-plan.mjs';
 import {pool} from '../../../lib/db';
 import {GET as scanner} from '../scanner/route';
 import {GET as dashboard} from '../dashboard/route';
@@ -12,7 +13,7 @@ export async function computeCandidates(){
  if(!scannerResponse.ok||!dashboardResponse.ok)
   throw Error('Scanner or portfolio unavailable');
  const [signals,account]=await Promise.all([scannerResponse.json(),dashboardResponse.json()]);
- const asOf=new Date().toISOString().slice(0,10);
+ const asOf=parisClock().day;
  return screenPaperCandidates(signals,account,{asOf,benchmarkDay:benchmark.rows[0]?.day??null});
 }
 export async function GET(){
