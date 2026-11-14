@@ -23,7 +23,9 @@ CURRENCIES = {"EUR", "USD", "GBP", "CHF", "SEK", "DKK", "NOK", "PLN"}
 INDEXES = {"SP500", "STOXX600"}
 
 def quote(value):
-    return "'" + value.replace("'", "''") + "'"
+    # Hex-encoded UTF-8 SQL expression avoids interpolation hazards with
+    # apostrophes, backslashes, embedded SQL and dollar-quote delimiters.
+    return "convert_from(decode('" + value.encode("utf-8").hex() + "','hex'),'UTF8')"
 
 def parse_csv(path):
     with path.open("r", newline="", encoding="utf-8-sig") as stream:
