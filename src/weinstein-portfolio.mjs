@@ -1,15 +1,10 @@
-import {aggregateWeeks} from './weinstein.mjs';
+import {aggregateWeeks,completedWeekCutoff} from './weinstein.mjs';
 import {analyzeHistoricalPhases} from './weinstein-history.mjs';
 import {sizePaperPosition,simulateLongStop} from './paper-risk.mjs';
 
 const NEXT_WEEK=7*86400000;
 const mondayAfter=week=>new Date(Date.parse(week+'T12:00:00Z')+NEXT_WEEK).toISOString().slice(0,10);
-const mondayAt=asOf=>{
- const date=new Date(asOf+'T12:00:00Z');
- if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf)||!Number.isFinite(+date))throw Error('Invalid asOf');
- date.setUTCDate(date.getUTCDate()-(date.getUTCDay()+6)%7);
- return date.toISOString().slice(0,10);
-};
+const mondayAt=asOf=>completedWeekCutoff(asOf);
 const round=x=>Math.round(x*1000000)/1000000;
 
 /**
