@@ -7,10 +7,13 @@ type Order={id:number;symbol:string;side:string;qty:number;price:number;fee:numb
 type UniverseBatch={id:string;name:string;symbols:string[];instruments:{symbol:string;name:string;bars:number;last_day:string|null}[]};
 type Scan={id:number;symbol:string;name:string;signal:string;stage?:string;stageRank?:number;setupScore?:number;watchScore?:number|null;watchStatus?:string;provisional?:boolean;currentResistance?:number|null;distanceToResistancePct?:number|null;watchReasons?:string[];reasons?:string[];distanceFromMaPct?:number;resistanceDistancePct?:number;maSlope6Pct?:number;priorDeclinePct?:number;eligible:boolean;last:{day:string;close:number}|null;ma30?:number;volumeRatio?:number;relativeStrength?:number;priorHigh?:number};
 type PortfolioBacktest={initialCash:number;finalCash:number;finalEquity:number;returnPct:number;tradeCount:number;maxDrawdownPct:number;winRatePct:number|null;holdWeeks:number;symbolsAnalyzed:number;equityCurve:{week:string;cash:number;equity:number;openPositions:number}[];trades:{symbol:string;signalWeek:string;entryWeek:string;exitWeek:string;quantity:number;pnl:number;exitReason:string}[];skipped:{symbol:string;week?:string;reason:string}[];positionsOpen:string[];periods:{name:string;from:string|null;to:string|null;weeks:number;returnPct:number|null;trades:number}[];assumptions:string[]};
+type PaperCandidate={id:number;symbol:string;name:string;signal:string;signalWeek:string|null;quoteDay:string|null;quotePrice:number|null;stop:number|null;relativeStrength:number|null;volumeRatio:number|null;quantity:number;maxPlannedLoss:number|null;fee:number;eligible:boolean;reasons:string[]};
+type PaperCandidates={mode:string;asOf:string;benchmarkDay:string|null;benchmarkFresh:boolean;eligibleCount:number;cash:number;positionsOpen:number;signalWeekExpected:string;candidates:PaperCandidate[];limitations:string[]};
 type Dashboard={mode:string;initial:number;cash:number;equity:number;signals:Signal[];positions:Position[];orders:Order[];error?:string};
 const euro=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 export default function Home(){
  const [tab,setTab]=useState(0),[data,setData]=useState<Dashboard|null>(null),[scans,setScans]=useState<Scan[]>([]),[token,setToken]=useState(''),[message,setMessage]=useState('');
+ const [paperCandidates,setPaperCandidates]=useState<PaperCandidates|null>(null),[paperError,setPaperError]=useState(''),[paperBusy,setPaperBusy]=useState(false),[paperOrderBusy,setPaperOrderBusy]=useState(false);
  const [portfolioHorizon,setPortfolioHorizon]=useState(12),[portfolioBacktest,setPortfolioBacktest]=useState<PortfolioBacktest|null>(null),[portfolioBacktestError,setPortfolioBacktestError]=useState(''),[portfolioBusy,setPortfolioBusy]=useState(false);
  const [syncBusy,setSyncBusy]=useState(false),[batches,setBatches]=useState<UniverseBatch[]>([]),[batchIndex,setBatchIndex]=useState(0),[screenView,setScreenView]=useState<'TOP'|'PHASE2'|'PHASE1'|'OTHER'|'MISSING'>('TOP');
  async function load(){try{
@@ -23,7 +26,36 @@ export default function Home(){
   setData(j);setScans(Array.isArray(scanned.results)?scanned.results:[]);
   setBatches(Array.isArray(universe.batches)?universe.batches:[]);
  }catch{setMessage('API indisponible')}}
- useEffect(()=>{void load()},[]);
+ async function loadPaperCandidates(){
+  setPaperBusy(true);setPaperError('');
+  try{
+   const response=await fetch('/api/paper-candidates',{cache:'no-store'});
+   const result=await response.json();
+   if(!response.ok)throw Error(result.error||'Sélection indisponible');
+   setPaperCandidates(result);
+  }catch(e){setPaperCandidates(null);setPaperError(String(e))}
+  finally{setPaperBusy(false)}
+ }
+ async function buyPaper(x:PaperCandidate){
+  if(!x.eligible||x.quantity<1||paperOrderBusy)return;
+  if(!confirm('Confirmer un achat FICTIF de '+x.quantity+' × '+x.symbol+
+   ' au dernier cours enregistré du '+x.quoteDay+' ('+euro(x.quotePrice)+
+   '), stop '+euro(x.stop)+' et frais '+euro(x.fee)+
+   ' ? Ce n’est PAS un cours de marché en direct.'))return;
+  setPaperOrderBusy(true);
+  try{
+   const r=await fetch('/api/local-actions',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'buy',symbol:x.symbol})});
+   const data=await r.json();
+   setMessage(r.ok?'Achat fictif confirmé : '+data.quantity+' × '+x.symbol+
+    ' au cours indicatif enregistré du '+data.referenceDay:
+    'Achat refusé : '+(data.error||'Données ou risque invalides'));
+   await load();await loadPaperCandidates();
+  }catch{setMessage('Achat fictif indisponible : API ou connexion')}
+  finally{setPaperOrderBusy(false)}
+ }
+ useEffect(()=>{void load();void loadPaperCandidates()},[]);
  async function syncYahoo(){
   const batch=batches[batchIndex];
   if(!batch?.symbols.length){setMessage('Aucun lot de surveillance disponible');return}
@@ -67,7 +99,7 @@ export default function Home(){
  }
  return <main>
   <header><div><h1>CTO Weinstein Trader</h1><small>Stratégie Weinstein · Yahoo Finance (cours non officiels) · Simulation interne</small></div><span className="badge">PAPER ONLY</span></header>
-  <nav><button className={tab===0?'active':''} onClick={()=>setTab(0)}>01 · Trades du matin</button><button className={tab===1?'active':''} onClick={()=>setTab(1)}>02 · Portefeuille</button><button className={tab===2?'active':''} onClick={()=>{setTab(2);void loadPortfolioBacktest()}}>03 · Backtest V4</button><button title="Recharge les données locales affichées, sans contacter Yahoo Finance" onClick={()=>{void load();if(tab===2)void loadPortfolioBacktest()}}>Actualiser l’affichage</button></nav>
+  <nav><button className={tab===0?'active':''} onClick={()=>setTab(0)}>01 · Trades du matin</button><button className={tab===1?'active':''} onClick={()=>setTab(1)}>02 · Portefeuille</button><button className={tab===2?'active':''} onClick={()=>{setTab(2);void loadPortfolioBacktest()}}>03 · Backtest V4</button><button title="Recharge les données locales affichées, sans contacter Yahoo Finance" onClick={()=>{void load();void loadPaperCandidates();if(tab===2)void loadPortfolioBacktest()}}>Actualiser l’affichage</button></nav>
   
   {message&&<div className="notice" role="status">{message}</div>}
   {data?.error&&<div className="notice" role="alert">PostgreSQL indisponible : {data.error}</div>}
@@ -85,6 +117,35 @@ export default function Home(){
       {syncBusy?'Synchronisation en cours...':'Importer ce lot Yahoo'}
     </button>
     <p className="muted">Chaque import est atomique pour le lot sélectionné. Si un symbole échoue, aucune donnée de ce lot n'est écrite. Source Yahoo non officielle ; usage personnel et conditions du fournisseur à respecter.</p>
+   </div>
+   <div className="chart-panel">
+    <div className="chart-toolbar">
+     <div><h3>Propositions d'achats fictifs — sélection quotidienne</h3>
+      <small>Uniquement cassures de phase 2 confirmées pendant la dernière semaine terminée. Cours affichés = dernière clôture enregistrée, pas un prix en direct.</small></div>
+     <button disabled={paperBusy||paperOrderBusy} onClick={()=>void loadPaperCandidates()}>{paperBusy?'Analyse en cours…':'Recalculer les candidats'}</button>
+    </div>
+    {paperError&&<div className="notice" role="alert">{paperError}</div>}
+    {paperCandidates&&<>
+     <p className="muted">Signal recherché : semaine du {paperCandidates.signalWeekExpected} · Benchmark : {paperCandidates.benchmarkDay??'absent'} · Liquidités PAPER : {euro(paperCandidates.cash)} · Positions : {paperCandidates.positionsOpen}/4</p>
+     <p><strong>{paperCandidates.eligibleCount===0?'Aucun achat admissible actuellement':paperCandidates.eligibleCount+' achat(s) admissible(s)'}</strong></p>
+     <div className="table"><table><thead><tr><th>Action</th><th>Signal</th><th>Dernière clôture</th><th>Stop théorique</th><th>Quantité</th><th>Risque estimé</th><th>Décision</th></tr></thead><tbody>
+      {paperCandidates.candidates.filter(x=>x.eligible).map(x=><tr key={x.symbol}>
+       <td><Link href={'/instrument/'+encodeURIComponent(x.symbol)}>{x.name} ({x.symbol})</Link></td>
+       <td>{x.signalWeek}</td><td>{x.quoteDay} · {euro(x.quotePrice)}</td><td>{euro(x.stop)}</td>
+       <td>{x.quantity}</td><td>{euro(x.maxPlannedLoss)}</td>
+       <td><button disabled={paperBusy||paperOrderBusy} onClick={()=>void buyPaper(x)}>Acheter fictivement</button></td>
+      </tr>)}
+      {paperCandidates.eligibleCount===0&&<tr><td colSpan={7}>Aucun achat : attendre une cassure confirmée ou corriger les données absentes.</td></tr>}
+     </tbody></table></div>
+     <details style={{marginTop:14}}><summary>Pourquoi certaines valeurs sont écartées ?</summary>
+      <div className="table"><table><thead><tr><th>Valeur</th><th>Motifs de refus</th></tr></thead><tbody>
+       {paperCandidates.candidates.filter(x=>!x.eligible).map(x=><tr key={x.symbol}>
+        <td>{x.symbol}</td><td>{x.reasons.join(' · ')||'—'}</td>
+       </tr>)}
+      </tbody></table></div>
+     </details>
+    </>}
+    <p className="muted">Une confirmation est obligatoire. Le prix fictif est basé sur une clôture connue et peut différer du prix d'ouverture suivant. Aucun courtier connecté ; le risque réel pourrait dépasser le stop en cas de gap.</p>
    </div>
    <div className="cards">
     <article><small>Entrées phase 2 confirmées</small><h2>{scans.filter(s=>s.signal==='PHASE2_BREAKOUT'&&s.eligible).length}</h2></article>
