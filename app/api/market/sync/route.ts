@@ -6,8 +6,9 @@ export const dynamic='force-dynamic';
 export const maxDuration=120;
 
 /**
- * Explicit manual synchronization for personal paper research.
- * No scheduled Yahoo collection. On ANY provider error no candle is written.
+ * Authenticated synchronization for personal PAPER research, from a user's
+ * explicit import or the bounded daily collection worker.
+ * On ANY provider error no candle of the requested batch is written.
  * No Yahoo API key, broker account or trading endpoint.
  */
 export async function POST(req:NextRequest){
