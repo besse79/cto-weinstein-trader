@@ -209,3 +209,18 @@ jobs:
       - name: Remove temporary CTO test containers
         if: always()
         run: docker compose -p cto_weinstein down --volumes --remove-orphans
+
+  exsa-live-diagnostic:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: One-time BlackRock EXSA source diagnostic (no DB writes)
+        run: |
+          echo 'EXSA live source diagnostic, not an import and not a constituent entitlement.'
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/fetch_exsa_preview.py /tmp/exsa-ci-preview.csv || echo 'EXSA source remains blocked: see full diagnostics above'
+          if test -f /tmp/exsa-ci-preview.csv; then
+            echo 'EXSA_PREVIEW_OK:'
+            wc -l /tmp/exsa-ci-preview.csv
+          fi
