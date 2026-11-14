@@ -20,7 +20,7 @@ export function selectMarketBatches(instruments,kind,day,{maxSymbols=144}={}){
   if(!['EUR','USD'].includes(x.currency))return false;
   if(kind==='EU_CLOSE'&&x.currency!=='EUR')return false;
   if(kind==='US_CLOSE'&&x.currency!=='USD')return false;
-  if(kind==='BOOTSTRAP'&&Number(x.bars)>=250&&age(x.last_day)>=0&&age(x.last_day)<=4)return false;
+  if(kind==='BOOTSTRAP'&&Number(x.bars)>=250&&age(x.last_day)>=0&&age(x.last_day)<4)return false;
   return true;
  });
  // Prioritize benchmarks. Rotate secondary symbols on larger future
