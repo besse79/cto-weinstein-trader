@@ -42,7 +42,7 @@ class V4ReleaseGateTest(unittest.TestCase):
 
     def test_backtest_scope_blocks(self):
         rows=fixtures()
-        rows[3]["instrumentsTested"]=151
+        rows[3]["instrumentsTested"]=751
         self.assertIn("PORTFOLIO_BACKTEST_SCOPE_EXCEEDED",self.check(rows)["blockers"])
 
 if __name__=="__main__":
