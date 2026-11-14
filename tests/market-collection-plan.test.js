@@ -51,3 +51,27 @@ test('outages exceeding 60 days force 5-year refill rather than short delta wind
   'BOOTSTRAP','2026-11-14');
  assert.deepEqual(future.groups,[{mode:'history',symbols:['EXSA.DE']}]);
 });
+
+test('large universes rotate by a full batch, not one ticker per day',()=>{
+ const big=Array.from({length:1080},(_,i)=>({
+  symbol:'X'+String(i).padStart(4,'0'),currency:'EUR',bars:1000,last_day:'2026-11-13'
+ }));
+ const observed=new Set();
+ for(let day=16;day<=25;day++){
+  const p=selectMarketBatches(big,'EU_CLOSE','2026-11-'+day,{maxSymbols:120});
+  assert.equal(p.selected,120);
+  for(const row of p.groups)for(const symbol of row.symbols)observed.add(symbol);
+ }
+ assert.equal(observed.size,1080);
+});
+test('bootstrap does not permanently starve a large set of failed histories',()=>{
+ const big=Array.from({length:300},(_,i)=>({
+  symbol:'B'+String(i).padStart(4,'0'),currency:'EUR',bars:0,last_day:null
+ }));
+ const observed=new Set();
+ for(let day=16;day<=18;day++){
+  const p=selectMarketBatches(big,'BOOTSTRAP','2026-11-'+day,{maxSymbols:120});
+  for(const row of p.groups)for(const symbol of row.symbols)observed.add(symbol);
+ }
+ assert.equal(observed.size,300);
+});
