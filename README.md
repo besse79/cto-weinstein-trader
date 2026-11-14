@@ -268,3 +268,28 @@ Clôturer V4 seulement après une recette WSL des cotations et signaux réels, d
 Correctif de qualité : le lecteur Yahoo excluait auparavant systématiquement la bougie de la journée, y compris après la clôture. V4.1 accepte désormais une bougie du même jour seulement après un délai de sécurité défini par le fuseau reconnu de la place, avec tests Paris/New York et conservation de l'exclusion intraday. Les fuseaux non reconnus restent bloqués pour les bougies du jour. Une collecte « SUCCESS » ne prouve pas nécessairement la présence de la bougie du vendredi : vérifier aussi les dates par symbole et par benchmark dans les diagnostics.
 
 **Important** : ce changement est présent uniquement sur la branche de recette jusqu'au déploiement explicite. L'installation V4 actuelle continue à utiliser ses horaires et règles précédents. Le moteur Docker doit rester actif pour que la collecte ait lieu.
+
+## V4.1 — Précontrôle automatique des 1 100 valeurs avant import
+
+`python3 scripts/v4_1_universe_preflight.py` récupère **une seule fois**, sur demande, les deux sources de recherche :
+
+1. Instantané public daté des 503 titres du S&P 500 (dépôt tiers `chinobing/historical_sp500_constituents`, initialement dérivé de Wikipédia). Vérification d'une date unique, récente et non future, du nombre de titres, de la syntaxe et des doublons.
+2. Positions du fonds iShares EXSA (source BlackRock officielle), **PROXY** de l'indice STOXX Europe 600, **pas** une composition officielle. Vérification de la date effective, de l'exclusion des liquidités/dérivés, des places de cotation et des devises. Toute correspondance Yahoo non résolue bloque l'instantané : aucune valeur artificielle.
+
+Le rapport inclut le nombre d'instruments, les dates et les SHA256. Les CSV sont conservés sous `~/cto-weinstein-previews/<timestamp>/`, sans modifier Git, PostgreSQL, le portefeuille ou les ordres PAPER. L'outil échoue proprement si le fournisseur exige une connexion, change son format ou refuse le téléchargement. L'importeur SQL reconnaît séparément `SP500`, `STOXX600` et `STOXX600_ETF_PROXY`. Un dossier ETF n'est jamais renommé en composition officielle.
+
+Sur un clone de la branche de recette, ce précontrôle est exécutable sans changement applicatif local :
+
+```bash
+cd ~/cto-weinstein-trader && git fetch origin feature/v4-1-universe-collection && dir="$(mktemp -d)" && git archive FETCH_HEAD | tar -xf - -C "$dir" && PYTHONDONTWRITEBYTECODE=1 python3 "$dir/scripts/v4_1_universe_preflight.py"
+```
+
+Une réussite `PREVIEWS_COMPLETE` **n'est pas** un import en base et ne prouve ni les droits sur les composantes de l'indice ni la validité de chaque code Yahoo. Un import réel reste soumis au contrôle de provenance, à une sauvegarde vérifiée et à une recette en copie isolée. Les 503 + environ 600 titres ne constituent pas 1 100 titres rafraîchis le vendredi : le plafond actuel de 120 instrument(s) par collecte ne garantit pas une couverture EOD complète.
+
+### Moteur et affichage sur un univers plus large
+
+- Le backtest partagé EUR passe de 150 à **750 titres maximum**, avec lecture PostgreSQL groupée. C'est une mesure de capacité et non une preuve statistique de rendement.
+- La route `/api/market/universe-coverage` et l'interface affichent par source la couverture des 250+ séances et le nombre de titres dont une clôture du vendredi **est réellement présente**. La revue large est déclarée « prête » uniquement à partir de 95 % de couverture historique et de bougies de vendredi.
+- Les cotations britanniques renvoyées par Yahoo en `GBp` ou `GBX` sont converties en GBP (prix / 100), uniquement pour des instruments `.L` dont la devise référencée est GBP. Les cours restent exclus des achats fictifs tant qu'aucune conversion EUR et aucun benchmark approprié ne sont vérifiés.
+- Les achats PAPER restent fermés le samedi et le dimanche, même quand une configuration hebdomadaire est retenue pour analyse. Une confirmation serveur et le respect des risques restent obligatoires en séance.
+- Des volumes historiques 5 ans, cotes ajustées et composition « point in time » ne sont pas encore tous validés. Ne pas commencer V5 sur une population dont les données ne sont pas complètes et documentées.
