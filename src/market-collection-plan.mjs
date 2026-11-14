@@ -20,7 +20,7 @@ export function selectMarketBatches(instruments,kind,day,{maxSymbols=144}={}){
   if(!['EUR','USD'].includes(x.currency))return false;
   if(kind==='EU_CLOSE'&&x.currency!=='EUR')return false;
   if(kind==='US_CLOSE'&&x.currency!=='USD')return false;
-  if(kind==='BOOTSTRAP'&&Number(x.bars)>=250&&age(x.last_day)<=4)return false;
+  if(kind==='BOOTSTRAP'&&Number(x.bars)>=250&&age(x.last_day)>=0&&age(x.last_day)<=4)return false;
   return true;
  });
  // Prioritize benchmarks. Rotate secondary symbols on larger future
@@ -33,7 +33,7 @@ export function selectMarketBatches(instruments,kind,day,{maxSymbols=144}={}){
  const selected=primary.concat(rotated).slice(0,maxSymbols);
  const groups=[];
  for(const mode of ['history','delta']){
-  const matching=selected.filter(x=>Number(x.bars)<250?'history'===mode:'delta'===mode);
+  const matching=selected.filter(x=>(Number(x.bars)<250||age(x.last_day)>60||age(x.last_day)<0?'history':'delta')===mode);
   for(let i=0;i<matching.length;i+=maxBatch)
    groups.push({mode,symbols:matching.slice(i,i+maxBatch).map(x=>x.symbol)});
  }
