@@ -136,6 +136,39 @@ class ExsaHoldingsTests(unittest.TestCase):
             self.assertIn("KRZ.IR",symbols)
             self.assertEqual(len(symbols),600)
 
+    def test_last_two_blackrock_rejections_are_security_verified(self):
+        self.assertEqual(exchange_suffix("Deutsche Börse AG","EUR"),".DE")
+        self.assertEqual(exchange_suffix("Deutsche Boerse AG","EUR"),".DE")
+        self.assertEqual(exchange_suffix("Nasdaq Omx Nordic","EUR",
+                                         "VSURE","Verisure plc"),".ST")
+        self.assertIsNone(exchange_suffix("Nasdaq Omx Nordic","EUR",
+                                           "UNKNOWN","Other security"))
+        self.assertIsNone(exchange_suffix("Nasdaq Omx Nordic","EUR",
+                                           "VSURE","Unrelated security"))
+
+    def test_600_components_with_qia_and_eur_verisure(self):
+        with tempfile.TemporaryDirectory() as d:
+            source=Path(d)/"special.csv"
+            destination=Path(d)/"normalized.csv"
+            with source.open("w",newline="",encoding="utf-8") as out:
+                w=csv.writer(out)
+                w.writerow(["Fund Holdings as of",date.today().isoformat()])
+                w.writerow(["Ticker","Name","Asset Class","Market Currency","Exchange"])
+                for i in range(600):
+                    ticker,name,exchange="EUR"+str(i),"European company", "Euronext Paris"
+                    if i==0:
+                        ticker,name,exchange="QIA","Qiagen N.V.","Deutsche Börse AG"
+                    if i==1:
+                        ticker,name,exchange="VSURE","Verisure plc","Nasdaq Omx Nordic"
+                    w.writerow([ticker,name,"Equity","EUR",exchange])
+            result=convert(source,destination,date.today().isoformat())
+            self.assertEqual(result["holdings"],600)
+            rows=parse_csv(destination)
+            symbols={x[1]:x[3] for x in rows}
+            self.assertEqual(symbols["QIA.DE"],"EUR")
+            self.assertEqual(symbols["VSURE.ST"],"EUR")
+            self.assertEqual(len(rows),600)
+
     def test_one_shot_official_domain_download_mock(self):
         with tempfile.TemporaryDirectory() as d:
             src=self.fixture(d)
