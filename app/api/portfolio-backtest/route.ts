@@ -1,3 +1,4 @@
+import {parisClock} from '../../../src/market-collection-plan.mjs';
 import {pool} from '../../../lib/db';
 import {backtestWeinsteinPortfolio} from '../../../src/weinstein-portfolio.mjs';
 export const dynamic='force-dynamic';
@@ -13,7 +14,7 @@ export async function GET(req:Request){
   if(!bench)return Response.json({error:'EUR benchmark not configured'},{status:409});
   const benchmarkDaily=(await pool.query(SQL,[bench.id])).rows;
   if(benchmarkDaily.length<250)return Response.json({error:'EUR benchmark history insufficient'},{status:409});
-  const now=new Date(),asOf=now.toISOString().slice(0,10);
+  const now=new Date(),asOf=parisClock(now).day;
   const lag=(day:string)=>(now.getTime()-Date.parse(day+'T12:00:00Z'))/86400000;
   if(lag(benchmarkDaily.at(-1).day)>10)
    return Response.json({error:'EUR benchmark stale'},{status:409});
