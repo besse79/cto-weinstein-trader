@@ -19,7 +19,7 @@ export async function POST(request:NextRequest){
   return Response.json({error:'Invalid symbol'},{status:400});
  try{
   const state=await computeCandidates();
-  const candidate=state.candidates.find(x=>x.symbol===symbol);
+  const candidate=state.candidates.find((x:{symbol:string})=>x.symbol===symbol);
   if(!candidate||!candidate.eligible||candidate.quantity<1)
    return Response.json({error:'PAPER entry blocked: no currently eligible confirmed signal',
     reasons:candidate?.reasons??['SYMBOL_UNAVAILABLE']},{status:409});
