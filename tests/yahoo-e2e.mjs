@@ -30,6 +30,21 @@ for(const item of r.json.results){
  assert.ok(item.count>600,item.symbol);
  assert.ok(item.last<=new Date().toISOString().slice(0,10));
 }
+const candidatesResponse=await fetch(base+'/api/paper-candidates');
+assert.equal(candidatesResponse.status,200);
+const mondayCandidates=await candidatesResponse.json();
+assert.equal(mondayCandidates.mode,'PAPER');
+assert.equal(mondayCandidates.cash,500);
+assert.ok(Array.isArray(mondayCandidates.candidates));
+assert.ok(mondayCandidates.candidates.every(x=>x.currency==='EUR'));
+assert.ok(mondayCandidates.candidates.every(x=>!x.eligible||
+ (x.signal==='PHASE2_BREAKOUT'&&x.quantity>=1&&x.quoteDay)));
+const noBuy=await fetch(base+'/api/local-actions',{method:'POST',
+ headers:{'Content-Type':'application/json',Origin:'http://127.0.0.1:3010'},
+ body:JSON.stringify({action:'buy',symbol:'UNKNOWN.PA'})});
+assert.equal(noBuy.status,409,'Unknown instrument cannot become a PAPER purchase');
+const noAuthBuy=await post('/api/paper-entry',{symbol:'AC.PA'},false);
+assert.equal(noAuthBuy.status,401,'Internal PAPER entry endpoint requires server token');
 const portfolioResponse=await fetch(base+'/api/portfolio-backtest?weeks=12');
 assert.equal(portfolioResponse.status,200,'Multi-asset portfolio API must return success');
 const portfolio=await portfolioResponse.json();
