@@ -74,7 +74,9 @@ class ExsaHoldingsTests(unittest.TestCase):
             ("Wiener Boer","EUR",".VI"),
             ("Wiener Boerse Ag","EUR",".VI"),
             ("Nasdaq OMX Copenhagen A/S","DKK",".CO"),
-            ("Oslo Boers ASA","NOK",".OL")
+            ("Oslo Boers ASA","NOK",".OL"),
+            ("Athens Exchange S.A. Cash Market","EUR",".AT"),
+            ("Irish Stock Exchange - All Market","EUR",".IR")
         ]
         for place,currency,suffix in examples:
             with self.subTest(place=place):
@@ -106,6 +108,32 @@ class ExsaHoldingsTests(unittest.TestCase):
             symbols={row[1] for row in parse_csv(result)}
             self.assertIn("NOVO-B.CO",symbols)
             self.assertIn("EBS.VI",symbols)
+            self.assertEqual(len(symbols),600)
+
+    def test_blackrock_athens_and_irish_markets_preserve_complete_universe(self):
+        with tempfile.TemporaryDirectory() as d:
+            input_csv=Path(d)/"exsa_source.csv"
+            output_csv=Path(d)/"exsa_normalized.csv"
+            with input_csv.open("w",newline="",encoding="utf-8") as fp:
+                writer=csv.writer(fp)
+                writer.writerow(["Fund Holdings as of",date.today().isoformat()])
+                writer.writerow(["Ticker","Name","Asset Class","Market Currency","Exchange"])
+                for n in range(600):
+                    if n<10:
+                        symbol="ALPHA" if n==0 else f"GREEK{n}"
+                        venue="Athens Exchange S.A. Cash Market"
+                    elif n<16:
+                        symbol="KRZ" if n==10 else f"IRISH{n}"
+                        venue="Irish Stock Exchange - All Market"
+                    else:
+                        symbol=f"EURO{n}"
+                        venue="Euronext Paris"
+                    writer.writerow([symbol,f"Fixture {n}","Equity","EUR",venue])
+            report=convert(input_csv,output_csv,date.today().isoformat())
+            self.assertEqual(report["holdings"],600)
+            symbols={row[1] for row in parse_csv(output_csv)}
+            self.assertIn("ALPHA.AT",symbols)
+            self.assertIn("KRZ.IR",symbols)
             self.assertEqual(len(symbols),600)
 
     def test_one_shot_official_domain_download_mock(self):
