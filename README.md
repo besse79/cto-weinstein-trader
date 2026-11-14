@@ -257,3 +257,14 @@ La disponibilité des 600 composants européens reste bloquée par une source de
 Le contrôle de recette `python3 scripts/v4_release_gate.py` interroge **uniquement en lecture** les API locales `127.0.0.1:3010`. Il vérifie : statut PAPER, capital initial 500 EUR, couverture historique des instruments existants, existence d'une collecte réussie, cohérence des candidats et disponibilité du backtest multi-actifs. Il renvoie `BLOCKED` (code 1) en cas d'échec ; `MANUAL_PAPER_REVIEW` (code 0) n'est **pas** une certification de performance ou de données licenciées. Ne jamais exécuter des ordres réels.
 
 Clôturer V4 seulement après une recette WSL des cotations et signaux réels, du scheduler sur une clôture européenne et américaine, du contrôle des stops et des sauvegardes/restaurations. La suite V4.1 élargit le référentiel mais ne change pas les contraintes de simulation : EUR uniquement et maximum 150 titres pour le backtest partagé existant. Un univers étendu sera **bloqué** sur ce backtest tant que la montée en charge et les benchmarks/FX ne seront pas revus. La V5 ne doit démarrer qu'après ces contrôles documentés.
+
+## Revue Weinstein le week-end (V4.1)
+
+- **Lundi à vendredi, 20:45 Europe/Paris** : import EUR/GBP/CHF et autres devises européennes, après leur clôture.
+- **Lundi à vendredi, 23:45 Europe/Paris** : import US, après clôture américaine et délai de consolidation des cours.
+- **Samedi et dimanche** : consulter dans l'interface le scanner et « Paris fictifs ». Les signaux utilisent la semaine ISO **achevée le vendredi** ; ils sont donc examinables le samedi, **pas pendant la séance du vendredi**.
+- **Lundi avant l'ouverture** : vérifier les conditions d'entrée et la trésorerie PAPER. Pas de passage d'ordre automatique.
+
+Correctif de qualité : le lecteur Yahoo excluait auparavant systématiquement la bougie de la journée, y compris après la clôture. V4.1 accepte désormais une bougie du même jour seulement après un délai de sécurité défini par le fuseau reconnu de la place, avec tests Paris/New York et conservation de l'exclusion intraday. Les fuseaux non reconnus restent bloqués pour les bougies du jour. Une collecte « SUCCESS » ne prouve pas nécessairement la présence de la bougie du vendredi : vérifier aussi les dates par symbole et par benchmark dans les diagnostics.
+
+**Important** : ce changement est présent uniquement sur la branche de recette jusqu'au déploiement explicite. L'installation V4 actuelle continue à utiliser ses horaires et règles précédents. Le moteur Docker doit rester actif pour que la collecte ait lieu.
