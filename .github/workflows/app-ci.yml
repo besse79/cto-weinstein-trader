@@ -134,6 +134,14 @@ jobs:
         run: |
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 9
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM orders" | grep -Fx 0
+      - name: Test automated history recovery on isolated Yahoo mock
+        run: |
+          docker compose exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader < sql/migrations/004_market_collection.sql
+          docker compose exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader -c "DELETE FROM candles WHERE instrument_id=(SELECT id FROM instruments WHERE symbol='AC.PA')"
+          docker compose --profile automation run --rm scheduler node scripts/market-scheduler.mjs --once
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_job_runs WHERE job_type='BOOTSTRAP' AND status='SUCCESS'" | grep -Fx 1
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM candles WHERE instrument_id=(SELECT id FROM instruments WHERE symbol='AC.PA')" | awk '{if ($1<600) exit 1}'
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 10
       - name: Diagnostics
         if: failure()
         run: |
