@@ -47,6 +47,15 @@ SUFFIXES={
     "OSLO BOERS":".OL",
     "OSLO BOERS ASA":".OL",
     "OMX NORDIC EXCHANGE OSLO":".OL",
+    # Confirmed on Yahoo exchange suffix directory: ATHEX -> .AT;
+    # Euronext Dublin (formerly Irish Stock Exchange) -> .IR.
+    "ATHENS EXCHANGE S A CASH MARKET":".AT",
+    "ATHENS EXCHANGE S A":".AT",
+    "ATHENS STOCK EXCHANGE":".AT",
+    "ATHENS EXCHANGE":".AT",
+    "IRISH STOCK EXCHANGE ALL MARKET":".IR",
+    "IRISH STOCK EXCHANGE":".IR",
+    "EURONEXT DUBLIN ALL MARKET":".IR",
 }
 CURRENCY_SUFFIX={"SEK":".ST","DKK":".CO","NOK":".OL","PLN":".WA"}
 MONTHS={
