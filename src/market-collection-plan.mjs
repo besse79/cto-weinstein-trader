@@ -17,8 +17,8 @@ export function selectMarketBatches(instruments,kind,day,{maxSymbols=144}={}){
   if(!x||typeof x.symbol!=='string'||seen.has(x.symbol)||
    !/^[A-Z0-9.^-]{1,24}$/.test(x.symbol))return false;
   seen.add(x.symbol);
-  if(!['EUR','USD'].includes(x.currency))return false;
-  if(kind==='EU_CLOSE'&&x.currency!=='EUR')return false;
+  if(!['EUR','USD','GBP','CHF','SEK','DKK','NOK','PLN'].includes(x.currency))return false;
+  if(kind==='EU_CLOSE'&&x.currency==='USD')return false;
   if(kind==='US_CLOSE'&&x.currency!=='USD')return false;
   if(kind==='BOOTSTRAP'&&Number(x.bars)>=250&&age(x.last_day)>=0&&age(x.last_day)<4)return false;
   return true;
