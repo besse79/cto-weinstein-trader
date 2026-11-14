@@ -26,6 +26,44 @@ function localDate(timestamp,zone){
   .format(date).replace(/^(\d\d)\/(\d\d)\/(\d{4})$/,'$3-$1-$2');
 }
 function validDay(day){return /^\d{4}-\d{2}-\d{2}$/.test(day)&&!Number.isNaN(Date.parse(day+'T12:00:00Z'))}
+/**
+ * Conservative EOD gate for today's daily candle. A fixed delay after the
+ * NORMAL cash-session close avoids storing Yahoo's still-forming daily bar.
+ * Unknown exchanges are intentionally previous-day-only.
+ *
+ * Europe: 19:30 local (>= 2 h after common 17:30 closures).
+ * New York: 17:30 local (>= 90 min after 16:00 ET close).
+ * Exchange holidays/missing updates are handled by freshness checks, not
+ * guessed to have traded. No intraday bars are ever accepted.
+ */
+export function isDailySessionClosed(now,zone){
+ if(!(now instanceof Date)||!Number.isFinite(+now))return false;
+ const thresholds={
+  'America/New_York':17*60+30,
+  'Europe/Paris':19*60+30,
+  'Europe/Berlin':19*60+30,
+  'Europe/Zurich':19*60+30,
+  'Europe/London':18*60+30,
+  'Europe/Stockholm':19*60+30,
+  'Europe/Oslo':19*60+30,
+  'Europe/Copenhagen':19*60+30,
+  'Europe/Warsaw':19*60+30,
+  'Europe/Amsterdam':19*60+30,
+  'Europe/Brussels':19*60+30,
+  'Europe/Helsinki':20*60+30,
+  'Europe/Madrid':19*60+30,
+  'Europe/Rome':19*60+30
+ };
+ const threshold=thresholds[zone];
+ if(threshold===undefined)return false;
+ const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{
+  timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23',
+  weekday:'short'
+ }).formatToParts(now).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
+ if(['Sat','Sun'].includes(parts.weekday))return false;
+ return Number(parts.hour)*60+Number(parts.minute)>=threshold;
+}
+
 export function parseYahooChart(json,{symbol,currency,asOf=new Date()}){
  const item=json?.chart?.result?.[0];
  if(json?.chart?.error||!item||!Array.isArray(json.chart.result)||json.chart.result.length!==1)
@@ -50,7 +88,7 @@ export function parseYahooChart(json,{symbol,currency,asOf=new Date()}){
   const day=localDate(ts[i],zone);
   if(!validDay(day)||dates.has(day))throw new Error('Duplicate or invalid market day');
   dates.add(day);
-  if(day>=today)continue; // Today's unfinished session is never processed.
+  if(day>today||day===today&&!isDailySessionClosed(now,zone))continue; // Never import a still-forming daily bar.
   const [open,high,low,close,volume]=['open','high','low','close','volume'].map(k=>quotes[k][i]);
   // Exchanges sometimes return nulls for non-trading/placeholder dates; omit them.
   if([open,high,low,close,volume].every(v=>v===null))continue;
