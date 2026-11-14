@@ -78,13 +78,15 @@ def guard():
         raise RuntimeError("Unexpected index constituents: "+repr(refs))
 
 def candidates():
-    rows=sql("""SELECT i.symbol||E'\\t'||i.currency||E'\\t'||count(c.day)
-      FROM instruments i
-      JOIN index_constituent_observations o ON o.instrument_id=i.id
+    rows=sql("""WITH members AS (
+       SELECT DISTINCT instrument_id FROM index_constituent_observations
+       WHERE (index_code='SP500' AND observed_on='2026-11-14') OR
+             (index_code='STOXX600_ETF_PROXY' AND observed_on='2026-11-12')
+      )
+      SELECT i.symbol||E'\\t'||i.currency||E'\\t'||count(c.day)
+      FROM members m JOIN instruments i ON i.id=m.instrument_id
       LEFT JOIN candles c ON c.instrument_id=i.id AND c.day>='2026-01-01' AND c.day<='2026-11-13'
-      WHERE (o.index_code='SP500' AND o.observed_on='2026-11-14') OR
-            (o.index_code='STOXX600_ETF_PROXY' AND o.observed_on='2026-11-12')
-      GROUP BY i.symbol,i.currency ORDER BY i.symbol""")
+      GROUP BY i.id,i.symbol,i.currency ORDER BY i.symbol""")
     # A symbol may be present in both snapshots; the distinct set is
     # mandatory to prevent overwriting entries or biasing quota allocation.
     unique={}
