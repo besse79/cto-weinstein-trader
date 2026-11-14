@@ -29,7 +29,7 @@ Pour importer : sélectionner un lot dans « Trades du matin » puis cliquer dir
 ### Fiabilité et restrictions
 
 - L'endpoint Yahoo Chart est **non officiel**, gratuit dans les conditions où il est accessible, sans garantie ni contrat de service. Yahoo peut renvoyer 401/429, interrompre ou modifier son format.
-- Les conditions générales Yahoo restreignent l'accès automatisé aux données sans autorisation préalable. Il revient à l'utilisateur de vérifier ses droits d'utilisation ; aucun contournement de contrôles, rotation de proxy ou scraping intensif n'est fourni. **L'import est manuel et non planifié.**
+- Les conditions générales Yahoo restreignent l'accès automatisé aux données sans autorisation préalable. Il revient à l'utilisateur de vérifier ses droits d'utilisation ; aucun contournement de contrôles, rotation de proxy ou scraping intensif n'est fourni. **L'import manuel reste possible ; un collecteur quotidien facultatif est désormais lancé par le déploiement local via Docker (voir la section « Collecte quotidienne automatisée »).**
 - Une synchronisation de groupe est **atomique** : si un instrument, une devise, une cotation ou une connexion ne passe pas les contrôles, rien n'est écrit. Les métadonnées d'import sont enregistrées dans `market_sync_audit`.
 - Vérification du symbole, de la devise, des dates et des volumes, de la cohérence haut/bas/ouverture/clôture ; exclusion des séances en cours et rejet des historiques périmés de plus de dix jours. Ce contrôle ne garantit pas la justesse économique des cotations.
 - Les données Yahoo ne constituent pas un flux d'exécution de courtier. Les dividendes, ajustements de splits et frais doivent être validés avant un backtest de performance sérieux.
@@ -79,7 +79,7 @@ La migration SQL `003_french_large_caps.sql` ajoute 20 sociétés cotées à Par
 
 - `GET /api/universe` affiche les instruments déjà enregistrés, le nombre de bougies et la date du dernier cours, groupés en lots de six maximum.
 - Dans l'interface, l'utilisateur sélectionne **un lot**, puis déclenche explicitement son import Yahoo. L'ancien appel `{ "all": true }` reste compatible mais importe **uniquement les six instruments initiaux**. Les nouveaux appels utilisent `{ "symbols": ["AI.PA", "AIR.PA"] }` avec de un à six symboles distincts présents en base.
-- Chaque lot est atomique : symbole, devise ou prix invalide => aucune bougie de ce lot n'est écrite. Aucun contournement des restrictions Yahoo, aucun ordonnanceur et aucun transfert d'ordre.
+- Chaque lot est atomique : symbole, devise ou prix invalide => aucune bougie de ce lot n'est écrite. Aucun contournement des restrictions Yahoo et aucun transfert d'ordre ; un collecteur de clôtures quotidien borné est décrit plus bas.
 - Le scanner comporte trois listes : **cassures de phase 2**, **bases de fin de phase 1**, **rejets / données absentes**. Chaque rejet décrit les critères manquants.
 - Une cassure confirmée mais située à plus de **20 % au-dessus de la MM30** est classée `PHASE2_EXTENDED`, et n'est **pas éligible** au signal d'entrée initial. Ce seuil conservateur est heuristique et doit être backtesté.
 - Les titres qui ne sont pas encore importés restent `NO_DATA` et ne peuvent pas générer d'achats.
@@ -99,7 +99,7 @@ Le statut `PROVISIONAL_BREAKOUT` apparaît uniquement si un **cours quotidien cl
 
 La page du scanner s'ouvre sur les **cinq meilleures configurations disposant de données fraîches** (tri par score de veille). Des onglets séparent les entrées phase 2, bases de phase 1, autres profils et **données absentes/périmées**. Aucune valeur sans historique suffisant ou benchmark valable n'obtient de score de veille.
 
-La fiche détaillée peut afficher une marque distincte du dernier cours quotidien et de la résistance de veille, **sans incorporer cette séance à la courbe des semaines closes**. La cotation n'est pas garantie comme temps réel : elle dépend du dernier import Yahoo manuel. Aucune collecte automatique, aucun ordre réel, capital paper 500 EUR conservé.
+La fiche détaillée peut afficher une marque distincte du dernier cours quotidien et de la résistance de veille, **sans incorporer cette séance à la courbe des semaines closes**. La cotation n'est pas garantie comme temps réel : elle dépend du dernier import Yahoo, manuel ou programmé. Collecte EOD quotidienne disponible lorsque Docker fonctionne, aucun ordre réel, capital paper 500 EUR conservé.
 
 ## V3 — Reconstitution historique des phases Weinstein
 
