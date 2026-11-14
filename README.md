@@ -200,3 +200,36 @@ docker compose -p cto_weinstein --profile automation ps
 docker compose -p cto_weinstein --profile automation logs --tail=80 scheduler
 ```
 Arrêt volontaire : `docker compose -p cto_weinstein --profile automation stop scheduler`. Un redéploiement normal réactive la collecte. L'API de statut en lecture seule est `GET /api/market/collection-status`.
+
+
+## V4.1 — Référentiel S&P 500 / STOXX Europe 600 (branche de recette)
+
+**État : préparé pour les imports de compositions, pas encore peuplé.** Les 26 instruments existants ne deviennent pas automatiquement 1 100 instruments. Les deux ETF `SPY` et `EXSA.DE` restent des benchmarks, pas des listes de constituants. Ne pas fusionner ni déployer cette branche avant CI et validation de la provenance.
+
+### Import d'un instantané de constituants
+
+L'importeur `scripts/import_index_universe.py` accepte un fichier CSV provenant d'une source autorisée, vérifiée et datée. Aucune liste n'est embarquée ni obtenue via un scraper non autorisé. Le format est :
+
+```csv
+index_code,symbol,name,currency
+SP500,AAPL,Apple,USD
+STOXX600,AZN.L,AstraZeneca,GBP
+```
+
+Ces **deux lignes ne sont que des exemples de format**, pas la composition officielle complète.
+
+Pour prévisualiser sans toucher aux bases :
+
+```bash
+python3 scripts/import_index_universe.py /chemin/autorise/constituants.csv --as-of 2026-11-14 --source "Index provider - snapshot 2026-11-14"
+```
+
+Pour appliquer, ajouter `--apply` à **cette même commande** seulement après revue de la source et confirmation des droits d'utilisation. L'importeur fait une sauvegarde préalable vérifiée des sources et de PostgreSQL et insère les nouveaux instruments et observations de composition datées dans une transaction. Aucun titre existant n'est effacé ; aucun ordre n'est passé. Une nouvelle composition doit être importée avec une nouvelle date d'observation. Une observation n'établit pas une appartenance historique avant sa date. Le fichier doit employer les **tickers reconnus par le fournisseur de cotations**, qui peuvent différer des codes officiels de l'indice.
+
+L'importeur admet les devises USD, EUR, GBP, CHF, SEK, DKK, NOK et PLN. Le scheduler importe leurs données quotidiennes, mais **les signaux et achats PAPER multidevises ne sont pas validés** : benchmark de même devise, FX, frais et ajustements de split/dividende doivent être fiabilisés séparément. L'intégralité de la composition des deux indices et ses droits de redistribution restent à obtenir et vérifier.
+
+### Collecte progressive sur univers étendu
+
+La V4.1 corrige la rotation du scheduler pour avancer de **120 instruments par traitement** (hors places réservées aux benchmarks) et non d'un seul symbole à la fois. La fenêtre de rattrapage continue à fonctionner sans suppression de l'historique déjà acquis ; `market_job_runs` et `/api/market/collection-status` servent à contrôler la progression. La limite de 120 est volontaire : **1 100 titres ne sont pas rafraîchis chaque jour** à ce plafond, et l'import initial prend plusieurs cycles. Ne pas promettre une fraîcheur quotidienne de tout l'univers avec une source gratuite non contractuelle. Adapter la collecte par fournisseur autorisé et quota, puis mesurer la couverture avant tout entraînement du modèle.
+
+La V4.1 constitue le **socle de données**, pas encore un modèle ML entraîné. Avant l'entraînement V5, il faut contrôler les actions sorties des indices (biais de survivance), les données ajustées, la continuité des historiques et les partages chronologiques sans fuite de futur.
