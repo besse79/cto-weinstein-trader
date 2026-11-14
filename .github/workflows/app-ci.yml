@@ -187,6 +187,10 @@ jobs:
           python3 scripts/import_index_universe.py /tmp/cto-universe-ci.csv --as-of "$(date -u +%F)" --source "CI synthetic index test" --allow-partial --apply
           curl -fsS http://127.0.0.1:3010/api/market/universe-coverage | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="OBSERVED",d; a={x["index_code"]:x for x in d["indices"]}; assert a["SP500"]["constituents"]==1 and a["STOXX600_ETF_PROXY"]["constituents"]==1,d'
           docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 28
+      - name: Check scanner responsiveness with 1105 additional catalog rows
+        run: |
+          docker compose -p cto_weinstein exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader -c "INSERT INTO instruments(symbol,name,currency) SELECT 'CISCALE' || g::text,'Synthetic scale fixture ' || g::text,'EUR' FROM generate_series(1,1105) g ON CONFLICT DO NOTHING"
+          curl -fsS --max-time 30 http://127.0.0.1:3010/api/scanner | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["results"])>=1100 and all(x["eligible"] is False for x in d["results"] if x["symbol"].startswith("CISCALE")),d.get("error")'
       - name: Verify rollback archive without modifying database
         run: |
           latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
