@@ -181,6 +181,12 @@ jobs:
       - name: Verify EUR benchmark migrated exactly once
         run: |
           docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments WHERE symbol='EXSA.DE' AND currency='EUR'" | grep -Fx 1
+      - name: Verify index snapshot import and membership coverage on isolated CI PostgreSQL
+        run: |
+          printf 'index_code,symbol,name,currency\nSP500,CITESTUS,Synthetic US,USD\nSTOXX600_ETF_PROXY,CITESTEU.PA,Synthetic EU,EUR\n' > /tmp/cto-universe-ci.csv
+          python3 scripts/import_index_universe.py /tmp/cto-universe-ci.csv --as-of "$(date -u +%F)" --source "CI synthetic index test" --allow-partial --apply
+          curl -fsS http://127.0.0.1:3010/api/market/universe-coverage | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="OBSERVED",d; a={x["index_code"]:x for x in d["indices"]}; assert a["SP500"]["constituents"]==1 and a["STOXX600_ETF_PROXY"]["constituents"]==1,d'
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 28
       - name: Verify rollback archive without modifying database
         run: |
           latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
