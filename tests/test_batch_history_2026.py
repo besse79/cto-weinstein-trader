@@ -82,7 +82,7 @@ class BatchHistory2026Tests(unittest.TestCase):
                  patch.object(b,"token_request",side_effect=RuntimeError("HTTP 502: Yahoo provider unavailable (HTTP 429)")) as client,\
                  patch.object(b,"urlopen") as network,\
                  patch.object(b.time,"sleep") as sleep:
-                network.return_value.__enter__.return_value.read.return_value=b'{"mode":"PAPER","initial":500}'
+                network.return_value.read.return_value=b'{"mode":"PAPER","initial":500}'
                 self.assertEqual(b.execute(apply=True),1)
             self.assertEqual(client.call_count,1)
             sleep.assert_not_called()
