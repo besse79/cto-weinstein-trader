@@ -239,3 +239,15 @@ La V4.1 constitue le **socle de données**, pas encore un modèle ML entraîné.
 Une fois l'import de la composition effectué, consulter `GET /api/market/universe-coverage` pour connaître par indice la date de l'instantané, le nombre de lignes, la couverture à 250 et 750 séances, la fraîcheur des clôtures et la répartition des devises. Avant tout import, cet endpoint retourne `NOT_IMPORTED`. Cette API ne prétend pas vérifier les droits sur les fichiers ni l'historique des entrées/sorties d'indice.
 
 Sources de composition à vérifier avant l'import : les publications et fichiers sous licence de STOXX (https://stoxx.com/index/SXXP/) et les données S&P Dow Jones (https://www.spglobal.com/spdji/en/indices/equity/sp-500/). Les dépôts publics contenant des instantanés S&P 500 peuvent servir à recouper des tickers mais ne constituent pas une preuve de licence ou d'appartenance officielle. Ne jamais déduire les composants du STOXX Europe 600 de l'unique ETF benchmark EXSA.DE.
+
+### Prévisualisation automatisée des composants S&P 500
+
+Le script `scripts/fetch_sp500_preview.py` télécharge **uniquement** le fichier public de la liste américaine depuis `chinobing/historical_sp500_constituents`, en limitant la réponse à 250 ko. Il vérifie le format, le nombre de lignes et la **date exacte** indiquée sur chaque ligne avant de créer un instantané normalisé utilisable par le validateur V4.1. Il n'installe rien, ne touche pas à PostgreSQL et ne peut pas importer une composition dont la date diffère. Il faut utiliser la date réellement publiée par la source (elle peut changer chaque jour).
+
+```bash
+python3 scripts/fetch_sp500_preview.py /tmp/weinstein-sp500-preview.csv --as-of 2026-11-14
+```
+
+Cette liste GitHub est un **instantané tiers, non une liste officielle ni une preuve de licence**. Ne pas l'appliquer directement à la base tant qu'il n'est pas vérifié auprès de S&P et que les droits d'utilisation ne sont pas établis. Les symboles avec points sont convertis en tirets pour l'adaptateur Yahoo ; leur validité doit être contrôlée auprès du fournisseur.
+
+La disponibilité des 600 composants européens reste bloquée par une source de composition exploitable et autorisée. La V4.1 ne prétend pas avoir chargé les 1 100 titres.
