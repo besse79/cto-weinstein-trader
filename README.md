@@ -162,3 +162,17 @@ L'application est liée par Docker à **127.0.0.1:3010** uniquement. Une action 
 Les endpoints `POST /api/orders` et `POST /api/market/sync` **conservent leur contrôle d'authentification**. Le nouveau point d'entrée n'autorise que `sync` (import manuel d'une liste existante de maximum six symboles) et `sell` (vente PAPER). L'enregistrement d'un nouvel achat ne passe pas par ce point d'entrée.
 
 **Portée de sécurité** : cette configuration est prévue pour **un poste utilisateur de confiance**, non pour un serveur partagé. Toute application ou utilisateur ayant un accès local direct au port peut tenter d'agir ; le mécanisme empêche surtout les appels de pages externes et le transport du secret vers le navigateur. Ne pas publier le port Docker sur `0.0.0.0`, ni exposer l'application par reverse proxy sans authentification supplémentaire. L'import reste manuel, sans programmation.
+
+## Préparation des achats PAPER — lundi 16 novembre 2026
+
+La page « 01 · Trades du matin » affiche une sélection **quotidienne** des actions EUR disposant d'un **signal phase 2 confirmé pendant la dernière semaine ISO clôturée**. Une action phase 1, un mouvement provisoire ou une ancienne cassure ne constitue pas un candidat à l'achat.
+
+Le tableau indique le dernier cours journalier clôturé enregistré, sa date, le support servant de stop initial, la quantité entière autorisée (risque théorique maximum 1 % des liquidités disponibles, allocation maximum 25 % des liquidités disponibles, frais simulés de 0,50 € à l'achat et à la vente), et les raisons de chaque exclusion. Maximum quatre positions distinctes ; pas de nouvel achat d'une action déjà détenue.
+
+Un utilisateur peut sélectionner un lot ou déclencher **l'import manuel de tous les lots** ; chaque requête reste explicitement initiée depuis le navigateur, sans ordonnanceur ni contournement des conditions Yahoo. Le référentiel actuel contient 24 actions EUR et deux benchmarks : **l'élargissement US et la collecte automatique ne sont pas livrés dans cette étape**.
+
+**L'ordre n'est jamais automatique** : le bouton « Acheter fictivement » demande une confirmation explicite. Le serveur revalide l'éligibilité du candidat, le cours et la quantité ; le moteur d'ordres PAPER recontrôle le risque, les liquidités et les doublons au sein d'une transaction. Une position simulée est ensuite visible dans l'onglet « 02 · Portefeuille ». Le prix utilisé est **la dernière clôture quotidienne importée**, pas le prix réel d'ouverture du lundi ni un flux temps réel. Un stop ne garantit pas une perte limitée à 1 % en présence d'un gap.
+
+En l'absence d'un candidat valable, aucun ordre n'est créé. L'API `GET /api/paper-candidates` est en lecture seule. `POST /api/paper-entry` est authentifié côté serveur et `POST /api/local-actions` n'expose qu'une action `buy` locale avec revalidation complète et protection Origin. Aucune route d'achat réel ni connexion courtier n'existe.
+
+**Lundi :** lancer l'application, importer les lots Yahoo nécessaires, actualiser l'analyse et valider éventuellement une transaction fictive. La collecte reste manuelle et la recette WSL sur les cours réels n'est pas attestée par la CI, qui utilise des données Yahoo simulées.
