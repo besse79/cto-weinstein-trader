@@ -2,7 +2,7 @@
 """V4.1 index constituents: explicit licensed CSV snapshot, dry-run by default.
 
 Input header: index_code,symbol,name,currency
-index_code: SP500 or STOXX600; symbol must be Yahoo-compatible.
+index_code: SP500, STOXX600 or STOXX600_ETF_PROXY; symbol must be Yahoo-compatible.
 The file must come from a source the operator is authorized to use.
 No constituent lists are fabricated or scraped by this tool.
 """
@@ -20,7 +20,7 @@ from deploy_local import backup, docker, check_prerequisites
 
 SYMBOL = re.compile(r"^[A-Z0-9.^-]{1,24}$")
 CURRENCIES = {"EUR", "USD", "GBP", "CHF", "SEK", "DKK", "NOK", "PLN"}
-INDEXES = {"SP500", "STOXX600"}
+INDEXES = {"SP500", "STOXX600", "STOXX600_ETF_PROXY"}
 
 def quote(value):
     # Hex-encoded UTF-8 SQL expression avoids interpolation hazards with
@@ -56,7 +56,7 @@ def parse_csv(path):
 def statement(rows, observed_on, source):
     sql = ["\\set ON_ERROR_STOP on", "BEGIN;", "SELECT pg_advisory_xact_lock(147041);"]
     sql.append("""CREATE TABLE IF NOT EXISTS index_constituent_observations (
-      index_code TEXT NOT NULL CHECK (index_code IN ('SP500','STOXX600')),
+      index_code TEXT NOT NULL CHECK (index_code IN ('SP500','STOXX600','STOXX600_ETF_PROXY')),
       instrument_id BIGINT NOT NULL REFERENCES instruments(id),
       observed_on DATE NOT NULL,
       source_label TEXT NOT NULL,
@@ -100,10 +100,12 @@ def main():
         print("Validated constituent snapshot:", counts, "currencies:",currencies)
         print("Source CSV SHA256:", digest)
         if args.apply and not args.allow_partial:
-            required={"SP500":490,"STOXX600":590}
-            missing={k:minimum-counts[k] for k,minimum in required.items() if counts[k]<minimum}
-            if missing:
-                raise ValueError(f"Incomplete constituent snapshot; refused: {missing}. Use --allow-partial for an intentional subset.")
+            limits={"SP500":(490,520),"STOXX600":(590,620),"STOXX600_ETF_PROXY":(570,640)}
+            invalid={k:{"observed":n,"expected":list(limits[k])} for k,n in counts.items()
+                     if n and not (limits[k][0]<=n<=limits[k][1])}
+            if invalid:
+                raise ValueError(f"Incomplete or oversized snapshot; refused: {invalid}. "
+                                 "Use --allow-partial for an intentional research subset.")
         print("This is a snapshot, NOT independently verified current index membership.")
         if not args.apply:
             print("DRY RUN: database untouched; pass --apply after reviewing CSV provenance.")
