@@ -7,11 +7,12 @@ export const YAHOO_PROVIDER='YAHOO_UNOFFICIAL';
 export const HISTORY_RANGE='5y';
 export const DAILY_INTERVAL='1d';
 
-export function yahooChartUrl(symbol,base='https://query1.finance.yahoo.com'){
+export function yahooChartUrl(symbol,base='https://query1.finance.yahoo.com',range=HISTORY_RANGE){
+ if(!['5y','3mo'].includes(range))throw new Error('Invalid chart history window');
  if(typeof symbol!=='string'|| !/^[A-Z0-9.^-]{1,24}$/.test(symbol))
   throw new Error('Invalid market symbol');
  const url=new URL('/v8/finance/chart/'+encodeURIComponent(symbol),base);
- url.searchParams.set('range',HISTORY_RANGE);
+ url.searchParams.set('range',range);
  url.searchParams.set('interval',DAILY_INTERVAL);
  url.searchParams.set('includePrePost','false');
  return url.toString();
