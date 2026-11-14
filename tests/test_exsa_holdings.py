@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
 from prepare_exsa_holdings_preview import convert,snapshot_date,exchange_suffix
 from import_index_universe import parse_csv
-from fetch_exsa_preview import fetch_preview,SOURCE
+from fetch_exsa_preview import fetch_preview,SOURCE,URLS
 from unittest.mock import patch
 
 class ExsaHoldingsTests(unittest.TestCase):
@@ -99,6 +99,52 @@ class ExsaHoldingsTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"redirected"):
                     fetch_preview(dest)
             self.assertFalse(dest.exists())
+
+    def test_first_published_url_404_then_legacy_official_fallback(self):
+        import urllib.error
+        with tempfile.TemporaryDirectory() as d:
+            source=self.fixture(d)
+            destination=Path(d)/"fallback.csv"
+            raw=source.read_bytes()
+            requested=[]
+            class Response:
+                status=200
+                def geturl(self):return URLS[1]
+                def read(self,n):return raw[:n]
+                def __enter__(self):return self
+                def __exit__(self,*args):return False
+            def fetch(req,timeout):
+                requested.append(req.full_url)
+                if len(requested)==1:
+                    raise urllib.error.HTTPError(req.full_url,404,"Not Found",{},None)
+                return Response()
+            with patch("fetch_exsa_preview.urllib.request.urlopen",side_effect=fetch):
+                result=fetch_preview(destination)
+            self.assertEqual(len(requested),2)
+            self.assertEqual(result["holdings"],600)
+            self.assertEqual(result["source_url"],URLS[1])
+
+    def test_authorized_local_file_can_be_used_without_request(self):
+        with tempfile.TemporaryDirectory() as d:
+            source=self.fixture(d)
+            destination=Path(d)/"local.csv"
+            with patch("fetch_exsa_preview.urllib.request.urlopen") as remote:
+                result=fetch_preview(destination,local_file=source)
+                remote.assert_not_called()
+            self.assertEqual(result["holdings"],600)
+            self.assertEqual(result["source_url"],"LOCAL_AUTHORIZED_ISHARES_CSV")
+
+    def test_provider_rate_limit_does_not_cascade_to_other_endpoints(self):
+        import urllib.error
+        with tempfile.TemporaryDirectory() as d:
+            destination=Path(d)/"blocked.csv"
+            def refuse(req,timeout):
+                raise urllib.error.HTTPError(req.full_url,429,"Rate limited",{},None)
+            with patch("fetch_exsa_preview.urllib.request.urlopen",side_effect=refuse) as remote:
+                with self.assertRaisesRegex(ValueError,"refused/rate limited"):
+                    fetch_preview(destination)
+                self.assertEqual(remote.call_count,1)
+            self.assertFalse(destination.exists())
 
 if __name__=="__main__":
     unittest.main()
