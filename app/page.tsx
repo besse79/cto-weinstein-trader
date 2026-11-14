@@ -71,6 +71,24 @@ export default function Home(){
   }catch{setMessage('Import impossible : réseau ou API indisponible')}
   finally{setSyncBusy(false)}
  }
+ async function syncAllYahoo(){
+  if(!batches.length){setMessage('Aucun lot disponible');return}
+  if(!confirm('Importer manuellement les '+batches.length+' lots Yahoo ? Chaque lot est limité à six instruments.'))return;
+  setSyncBusy(true);
+  let ok=0;
+  try{
+   for(const batch of batches){
+    setMessage('Import Yahoo : lot '+(ok+1)+' / '+batches.length+'...');
+    const r=await fetch('/api/local-actions',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({action:'sync',symbols:batch.symbols})});
+    const result=await r.json();
+    if(!r.ok)throw Error('Lot '+(ok+1)+' bloqué : '+(result.detail||result.error||'Échec'));
+    ok++;
+   }
+   setMessage(ok+' lots Yahoo importés. Scanner et candidats recalculés.');
+  }catch(e){setMessage('Import partiel : '+ok+' / '+batches.length+' lots terminés. '+String(e))}
+  finally{setSyncBusy(false);await load();await loadPaperCandidates()}
+ }
  async function loadPortfolioBacktest(weeks=portfolioHorizon){
   setPortfolioBusy(true);setPortfolioBacktestError('');
   try{
@@ -115,6 +133,9 @@ export default function Home(){
     <p className="muted">{batches[batchIndex]?.instruments.map(i=>i.name+' ('+i.symbol+')'+(i.bars?' · '+i.bars+' séances':' · À importer')).join(' · ')||'Chargement des lots...'}</p>
     <button disabled={syncBusy||!batches[batchIndex]} onClick={()=>void syncYahoo()}>
       {syncBusy?'Synchronisation en cours...':'Importer ce lot Yahoo'}
+    </button>
+    <button disabled={syncBusy||!batches.length} onClick={()=>void syncAllYahoo()} style={{marginLeft:10}}>
+      {syncBusy?'Import en cours…':'Importer tous les lots (manuel)'}
     </button>
     <p className="muted">Chaque import est atomique pour le lot sélectionné. Si un symbole échoue, aucune donnée de ce lot n'est écrite. Source Yahoo non officielle ; usage personnel et conditions du fournisseur à respecter.</p>
    </div>
