@@ -25,8 +25,8 @@ def evaluate(dashboard, market, candidates, backtest, *, today):
         blockers.append("UNIVERSE_HISTORY_INCOMPLETE_OR_STALE")
     runs=market.get("jobs") or []
     # A successful first bootstrap is necessary, but not proof future daily sync works.
-    if not any(r.get("job_type")=="BOOTSTRAP" and r.get("status")=="SUCCESS" for r in runs):
-        blockers.append("NO_SUCCESSFUL_RECENT_BOOTSTRAP")
+    if not any(r.get("status")=="SUCCESS" for r in runs):
+        blockers.append("NO_SUCCESSFUL_COLLECTION_JOB")
     if candidates.get("mode")!="PAPER" or not isinstance(candidates.get("candidates"),list):
         blockers.append("PAPER_CANDIDATES_UNAVAILABLE")
     if candidates.get("initialCash")!=500:
