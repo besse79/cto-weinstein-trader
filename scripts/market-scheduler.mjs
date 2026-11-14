@@ -39,21 +39,49 @@ async function execute(kind,clock){
     RETURNING id`,[kind,clock.day,JSON.stringify({planned:plan.selected,remaining:plan.remaining})]);
   runId=created.rows[0].id;
   let succeeded=0,failed=0,attempted=0;const errors=[];
+  const sync=async(symbols,mode)=>request('/api/market/sync',{
+   method:'POST',headers:{'Content-Type':'application/json','x-app-token':secret},
+   body:JSON.stringify({symbols,mode,scheduled:true})
+  });
+  let throttled=false;
   for(const group of plan.groups){
    try{
-    const result=await request('/api/market/sync',{
-     method:'POST',headers:{'Content-Type':'application/json','x-app-token':secret},
-     body:JSON.stringify({symbols:group.symbols,mode:group.mode,scheduled:true})
-    });
+    const result=await sync(group.symbols,group.mode);
     succeeded+=result.results.length;
     attempted+=group.symbols.length;
     process.stdout.write(fmt()+' '+kind+' '+group.mode+' '+group.symbols.join(',')+' OK\n');
    }catch(e){
-    attempted+=group.symbols.length;
-    failed+=group.symbols.length;
-    errors.push(group.symbols.join(',')+': '+safeError(e));
-    process.stderr.write(fmt()+' '+kind+' '+errors.at(-1)+'\n');
-    if(/HTTP 429|HTTP 401|HTTP 403/.test(safeError(e)))break;
+    const why=safeError(e);
+    if(/HTTP 429|HTTP 401|HTTP 403/.test(why)){
+     attempted+=group.symbols.length;
+     failed+=group.symbols.length;
+     errors.push(group.symbols.join(',')+': '+why);
+     throttled=true;
+    }else if(group.symbols.length>1){
+     // One invalid instrument should not block the remaining instruments.
+     // Never retry when an explicit provider authentication/rate refusal occurs.
+     for(const symbol of group.symbols){
+      try{
+       const result=await sync([symbol],group.mode);
+       succeeded+=result.results.length;
+       attempted++;
+      }catch(inner){
+       attempted++;failed++;
+       const reason=safeError(inner);
+       errors.push(symbol+': '+reason);
+       if(/HTTP 429|HTTP 401|HTTP 403/.test(reason)){
+        throttled=true;
+        break;
+       }
+      }
+      await pause(1200);
+     }
+    }else{
+     attempted++;failed++;
+     errors.push(group.symbols[0]+': '+why);
+    }
+    if(errors.length)process.stderr.write(fmt()+' '+kind+' '+errors.at(-1)+'\n');
+    if(throttled)break;
    }
    await pause(2500);
   }
