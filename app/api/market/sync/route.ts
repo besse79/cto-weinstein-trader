@@ -2,6 +2,7 @@ import {NextRequest} from 'next/server';
 import {authorized} from '../../../../lib/auth';
 import {pool} from '../../../../lib/db';
 import {yahooChartUrl,parseYahooChart,YAHOO_PROVIDER} from '../../../../src/yahoo-market.mjs';
+import {yahooYearWindowUrl} from '../../../../src/yahoo-year-window.mjs';
 export const dynamic='force-dynamic';
 export const maxDuration=120;
 
@@ -20,7 +21,10 @@ export async function POST(req:NextRequest){
  // Existing clients using {all:true} retain the original core-six import.
  // Expansion is opt-in: one explicitly selected batch of up to six tickers.
  const range=body.mode==='delta'?'3mo':'5y';
- if(body.mode!==undefined&&!['delta','history'].includes(body.mode))
+ const historicalYear=body.mode==='year'?body.year:null;
+ if(body.mode==='year'&&(!Number.isInteger(historicalYear)||historicalYear<1990||historicalYear>new Date().getUTCFullYear()))
+  return Response.json({error:'Invalid historical year'},{status:400});
+ if(body.mode!==undefined&&!['delta','history','year'].includes(body.mode))
   return Response.json({error:'Invalid collection mode'},{status:400});
  const core=['EXSA.DE','SPY','AC.PA','LR.PA','SAF.PA','SU.PA'];
  const all=body.all===true;
@@ -53,12 +57,15 @@ export async function POST(req:NextRequest){
    throw new Error('Invalid test-only provider endpoint');
   const snapshots=[];
   for(const instrument of instruments){
-   const url=yahooChartUrl(instrument.symbol,mock?testBase:undefined,range);
+   const url=historicalYear===null?
+    yahooChartUrl(instrument.symbol,mock?testBase:undefined,range):
+    yahooYearWindowUrl(instrument.symbol,historicalYear,{asOf:new Date().toISOString().slice(0,10),
+      base:mock?testBase:undefined}).url;
    const response=await fetch(url,{cache:'no-store',headers:{'Accept':'application/json'},
      signal:AbortSignal.timeout(16000)});
    if(!response.ok)throw new Error('Yahoo provider unavailable (HTTP '+response.status+'); no data written');
    const json=await response.json();
-   const parsed=parseYahooChart(json,{symbol:instrument.symbol,currency:instrument.currency});
+   const parsed=parseYahooChart(json,{symbol:instrument.symbol,currency:instrument.currency,historicalYear});
    snapshots.push({id:instrument.id,...parsed});
   }
   await db.query('BEGIN');transaction=true;
@@ -87,7 +94,7 @@ export async function POST(req:NextRequest){
   }
   await db.query('COMMIT');transaction=false;
   return Response.json({ok:true,provider:mock?'YAHOO_MOCK':YAHOO_PROVIDER,mode:'PAPER',
-    scheduled:body.scheduled===true,window:range,total,results:snapshots.map(s=>({symbol:s.symbol,count:s.bars.length,first:s.first,last:s.last})),
+    scheduled:body.scheduled===true,window:historicalYear===null?range:String(historicalYear),total,results:snapshots.map(s=>({symbol:s.symbol,count:s.bars.length,first:s.first,last:s.last})),
     warning:'Unofficial Yahoo chart endpoint; no SLA and use is subject to Yahoo terms. No real orders.'});
  }catch(e){
   if(transaction)await db.query('ROLLBACK');
