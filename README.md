@@ -176,3 +176,27 @@ Un utilisateur peut sélectionner un lot ou déclencher **l'import manuel de tou
 En l'absence d'un candidat valable, aucun ordre n'est créé. L'API `GET /api/paper-candidates` est en lecture seule. `POST /api/paper-entry` est authentifié côté serveur et `POST /api/local-actions` n'expose qu'une action `buy` locale avec revalidation complète et protection Origin. Aucune route d'achat réel ni connexion courtier n'existe.
 
 **Lundi :** lancer l'application, importer les lots Yahoo nécessaires, actualiser l'analyse et valider éventuellement une transaction fictive. La collecte reste manuelle et la recette WSL sur les cours réels n'est pas attestée par la CI, qui utilise des données Yahoo simulées.
+
+## Collecte quotidienne automatisée — stockage PostgreSQL
+
+Le conteneur Docker `scheduler` est installé automatiquement par `deploy_local.py` **sur WSL local**, après la sauvegarde vérifiée de la base, la migration idempotente `004_market_collection.sql` et le démarrage de l'application. Aucun cron système ni `APP_TOKEN` à saisir. Le collecteur n'est **pas** lancé dans GitHub Actions ni dans les commandes Docker sans le profil `automation`.
+
+Fonctionnement :
+- **Démarrage** : lecture du référentiel PostgreSQL, récupération progressive des historiques manquants/insuffisants (moins de 250 séances) sur une fenêtre de cinq ans, et rattrapage des titres dont la dernière séance est ancienne. Sans réimporter ceux déjà complets et récents.
+- **Lundi à vendredi 20 h 45, heure de Paris** : mise à jour des actions EUR et benchmark `EXSA.DE`.
+- **Lundi à vendredi 23 h 15, heure de Paris** : mise à jour du benchmark US `SPY` et des futurs titres USD enregistrés.
+- **Incrémental** : fenêtre glissante de trois mois pour les titres ayant déjà un historique de 250 séances ou plus, insertion/mise à jour sans doublons dans `candles`. Un premier import utilise cinq ans ; les prix déjà acquis restent conservés.
+- **Protection des appels** : lots de six au maximum, un seul collecteur à la fois (verrou PostgreSQL), maximum 120 symboles par exécution et rotation des valeurs secondaires si un univers futur dépasse cette limite ; jamais de requêtes à fréquence intraday. Jusqu'à trois essais espacés d'une heure pour un traitement en échec.
+- **Traçabilité** : `market_job_runs` conserve les dates, états, nombres de réussites/échecs et erreurs ; l'interface « Trades du matin » montre la couverture et les cinq derniers traitements.
+- **Robustesse** : chaque lot est atomique, un lot échoué n'efface jamais les historiques précédents. Les erreurs et rejets de qualité sont visibles. Les autres lots peuvent être traités, sauf limitation explicite par le fournisseur.
+
+**Attention :** la collecte utilise ici l'adaptateur Yahoo Finance gratuit déjà présent, **non officiel**, sans SLA ni garantie de droit de collecte automatisée. Le fonctionnement doit rester conforme aux conditions applicables au compte et aux données ; désactiver le conteneur si le fournisseur interdit cet usage ou renvoie un refus. Une API FMP gratuite peut être intégrée ultérieurement après vérification des instruments et de la licence, sans changement du stockage. La collecte quotidienne n'est pas une autorisation de trading et n'exécute **aucun** achat ou vente.
+
+**Disponibilité** : Docker Desktop et WSL doivent être démarrés aux heures prévues. Le conteneur redémarre automatiquement avec Docker ; si le poste était éteint, il tente de rattraper les historiques absents ou périmés lors de son retour, mais ne promet pas des données non disponibles chez la source.
+
+**Commandes de diagnostic (optionnelles)** :
+```bash
+docker compose -p cto_weinstein --profile automation ps
+docker compose -p cto_weinstein --profile automation logs --tail=80 scheduler
+```
+Arrêt volontaire : `docker compose -p cto_weinstein --profile automation stop scheduler`. Un redéploiement normal réactive la collecte. L'API de statut en lecture seule est `GET /api/market/collection-status`.
