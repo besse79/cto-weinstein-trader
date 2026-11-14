@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1] / "scripts"))
 from import_index_universe import parse_csv, statement
+from prepare_sp500_snapshot import convert
 
 class IndexImportTests(unittest.TestCase):
     def write(self, rows):
@@ -55,6 +56,31 @@ class IndexImportTests(unittest.TestCase):
             with self.subTest(symbol=symbol):
                 with self.assertRaises(ValueError):
                     parse_csv(self.write([["SP500",symbol,"Invalid","USD"]]))
+
+    def test_sp500_normalization_offline(self):
+        rows=[["X"+str(i).zfill(3), "Company "+str(i)] for i in range(503)]
+        with tempfile.TemporaryDirectory() as d:
+            src=Path(d)/"source.csv"
+            dst=Path(d)/"snapshot.csv"
+            with src.open("w",newline="",encoding="utf-8") as stream:
+                writer=csv.writer(stream)
+                writer.writerow(["Symbol","Name"])
+                writer.writerows(rows)
+            self.assertEqual(convert(src,dst),503)
+            normalized=parse_csv(dst)
+            self.assertEqual(len(normalized),503)
+            self.assertEqual(normalized[0],("SP500","X000","Company 0","USD"))
+            with self.assertRaises(FileExistsError):
+                convert(src,dst)
+
+    def test_bad_sp500_snapshot_never_writes(self):
+        with tempfile.TemporaryDirectory() as d:
+            src=Path(d)/"invalid.csv"
+            dst=Path(d)/"result.csv"
+            src.write_text("Symbol,Name\\nABC,Example\\n")
+            with self.assertRaisesRegex(ValueError,"component count"):
+                convert(src,dst)
+            self.assertFalse(dst.exists())
 
 if __name__=="__main__":
     unittest.main()
