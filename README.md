@@ -293,3 +293,13 @@ Une réussite `PREVIEWS_COMPLETE` **n'est pas** un import en base et ne prouve n
 - Les cotations britanniques renvoyées par Yahoo en `GBp` ou `GBX` sont converties en GBP (prix / 100), uniquement pour des instruments `.L` dont la devise référencée est GBP. Les cours restent exclus des achats fictifs tant qu'aucune conversion EUR et aucun benchmark approprié ne sont vérifiés.
 - Les achats PAPER restent fermés le samedi et le dimanche, même quand une configuration hebdomadaire est retenue pour analyse. Une confirmation serveur et le respect des risques restent obligatoires en séance.
 - Des volumes historiques 5 ans, cotes ajustées et composition « point in time » ne sont pas encore tous validés. Ne pas commencer V5 sur une population dont les données ne sont pas complètes et documentées.
+
+### EXSA : remédiation au 404 du 14 novembre 2026
+
+La prévisualisation initiale depuis `.../latest-holdings.csv` renvoie **HTTP 404** pour le produit 251931. Le downloader V4.1 teste désormais, sans contournement et sans réessais agressifs, le fichier iShares historique documenté par tidy-finance (`1478358465952.ajax?fileType=csv&fileName=EXSA_holdings&dataType=fund`), puis la déclinaison suisse autorisée, puis le lien récent. Il accepte uniquement un vrai CSV iShares daté et cohérent. Sur HTTP 401/403/429, il s'arrête immédiatement et signale le refus du fournisseur.
+
+Si les liens directs sont indisponibles, accéder à la page officielle <https://www.ishares.com/de/privatanleger/de/produkte/251931/> et utiliser la commande **Download latest fund holdings CSV data** dans « Positionen » depuis le navigateur. Le fichier d'origine peut être fourni sans le modifier via `--exsa-file /chemin/vers/EXSA_holdings.csv`. Le précontrôle ne modifie pas la base et bloque tout écart de date et symbole. Le fichier local est un instantané des **positions ETF**, pas de l'indice officiel STOXX.
+
+Pour réutiliser les 503 titres S&P déjà validés, utiliser en plus `--sp500-file /home/benoit/cto-weinstein-previews/20261114T172446Z/sp500.csv`. L'empreinte et le rapport antérieur restent la provenance de cet instantané.
+
+Ne pas déployer la branche ni lancer d'apprentissage tant que les 600 composants européens et la correspondance fournisseur ne sont pas validés.
