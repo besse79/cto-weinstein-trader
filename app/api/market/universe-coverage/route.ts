@@ -1,12 +1,18 @@
 import {pool} from '../../../../lib/db';
+import {parisClock} from '../../../../src/market-collection-plan.mjs';
 export const dynamic='force-dynamic';
 
 /** Read-only diagnostic: dated constituents are not proof of historical membership. */
 export async function GET(){
  try{
+  const paris=parisClock();
+  const date=new Date(paris.day+'T12:00:00Z');
+  const weekday=date.getUTCDay();
+  const daysBack=weekday===6?1:weekday===0?2:weekday+2;
+  const priorFriday=new Date(date.getTime()-daysBack*86400000).toISOString().slice(0,10);
   const present=await pool.query("SELECT to_regclass('public.index_constituent_observations') IS NOT NULL AS present");
   if(!present.rows[0]?.present) return Response.json({
-   status:'NOT_IMPORTED',indices:[],message:'No dated index snapshot has been imported.'
+   status:'NOT_IMPORTED',indices:[],priorFriday, message:'No dated index snapshot has been imported.'
   },{headers:{'Cache-Control':'no-store'}});
   const result=await pool.query(`
    WITH latest AS (
@@ -26,10 +32,11 @@ export async function GET(){
      count(*) FILTER (WHERE bars>=250)::int AS with_history,
      count(*) FILTER (WHERE bars<250)::int AS needing_history,
      count(*) FILTER (WHERE last_day>=CURRENT_DATE-INTERVAL '4 days')::int AS recent,
-     count(*) FILTER (WHERE bars>=750)::int AS with_three_years
+     count(*) FILTER (WHERE bars>=750)::int AS with_three_years,
+     count(*) FILTER (WHERE last_day=$1::date)::int AS with_friday_close
    FROM coverage
    GROUP BY index_code,snapshot_day
-   ORDER BY index_code`);
+   ORDER BY index_code`,[priorFriday]);
   // Currency distribution is kept separate from the OHLCV coverage aggregate.
   const currency=await pool.query(`
    WITH latest AS (
@@ -44,9 +51,12 @@ export async function GET(){
    index_code:row.index_code,snapshot_day:row.snapshot_day,
    constituents:row.constituents,with_history:row.with_history,with_three_years:row.with_three_years,
    needing_history:row.needing_history,recent:row.recent,
+   with_friday_close:row.with_friday_close,
+   fridayCoveragePct:row.constituents>0?Math.round(row.with_friday_close/row.constituents*10000)/100:0,
+   readyForWeekendReview:row.constituents>0&&row.with_friday_close/row.constituents>=0.95&&row.with_history/row.constituents>=0.95,
    currencies:Object.fromEntries(currency.rows.filter(c=>c.index_code===row.index_code).map(c=>[c.currency,c.n]))
   }));
-  return Response.json({status:'OBSERVED',indices,
+  return Response.json({status:'OBSERVED',priorFriday,indices,
    warning:'Constituent snapshots are point-in-time observations only; they do not establish prior historical membership or data licensing.'},
     {headers:{'Cache-Control':'no-store'}});
  }catch{
