@@ -1,4 +1,4 @@
-import {aggregateWeeks} from './weinstein.mjs';
+import {aggregateWeeks,completedWeekCutoff} from './weinstein.mjs';
 import {analyzeHistoricalPhases} from './weinstein-history.mjs';
 import {sizePaperPosition,simulateLongStop} from './paper-risk.mjs';
 
@@ -24,10 +24,7 @@ export function backtestWeinstein(daily,benchmarkDaily,{
   throw new Error('Invalid backtest parameters');
  const history=analyzeHistoricalPhases(daily,benchmarkDaily,{asOf});
  const scanWeeks=aggregateWeeks(daily);
- const t=new Date(asOf+'T12:00:00Z');
- if(!finite(+t))throw new Error('Invalid asOf');
- t.setUTCDate(t.getUTCDate()-(t.getUTCDay()+6)%7);
- const cutoff=t.toISOString().slice(0,10);
+ const cutoff=completedWeekCutoff(asOf);
  const completed=scanWeeks.filter(w=>w.week<cutoff&&w.lastDay<=asOf);
  const byWeek=new Map(completed.map((w,i)=>[w.week,i]));
  const events=history.transitions.filter(t=>t.to==='PHASE2'&&t.confirmedBreakout)
