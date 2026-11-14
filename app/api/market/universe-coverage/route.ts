@@ -26,15 +26,11 @@ export async function GET(){
      count(*) FILTER (WHERE bars>=250)::int AS with_history,
      count(*) FILTER (WHERE bars<250)::int AS needing_history,
      count(*) FILTER (WHERE last_day>=CURRENT_DATE-INTERVAL '4 days')::int AS recent,
-     jsonb_object_agg(currency, currency_count) FILTER (WHERE currency_count IS NOT NULL) AS currencies
-   FROM (
-     SELECT coverage.*,count(*) OVER (PARTITION BY index_code,currency) AS currency_count,
-       row_number() OVER (PARTITION BY index_code,currency ORDER BY symbol) AS currency_first
-     FROM coverage
-   ) c
+     count(*) FILTER (WHERE bars>=750)::int AS with_three_years
+   FROM coverage
    GROUP BY index_code,snapshot_day
    ORDER BY index_code`);
-  // Use separate query for currency counts to avoid nested/duplicated JSON keys.
+  // Currency distribution is kept separate from the OHLCV coverage aggregate.
   const currency=await pool.query(`
    WITH latest AS (
      SELECT index_code,MAX(observed_on) AS day FROM index_constituent_observations GROUP BY index_code
@@ -46,7 +42,7 @@ export async function GET(){
    GROUP BY o.index_code,i.currency ORDER BY o.index_code,i.currency`);
   const indices=result.rows.map(row=>({
    index_code:row.index_code,snapshot_day:row.snapshot_day,
-   constituents:row.constituents,with_history:row.with_history,
+   constituents:row.constituents,with_history:row.with_history,with_three_years:row.with_three_years,
    needing_history:row.needing_history,recent:row.recent,
    currencies:Object.fromEntries(currency.rows.filter(c=>c.index_code===row.index_code).map(c=>[c.currency,c.n]))
   }));
