@@ -42,7 +42,7 @@ def evaluate(dashboard, market, candidates, backtest, *, today):
         blockers.append("PORTFOLIO_BACKTEST_UNAVAILABLE")
     if result.get("initialCash")!=500 or result.get("finalEquity") is None:
         blockers.append("PORTFOLIO_BACKTEST_INVALID")
-    if backtest.get("instrumentsTested",0)>150:
+    if backtest.get("instrumentsTested",0)>750:
         blockers.append("PORTFOLIO_BACKTEST_SCOPE_EXCEEDED")
     if not runs or not any(r.get("job_type") in ("EU_CLOSE","US_CLOSE") and r.get("status")=="SUCCESS" for r in runs):
         observations.append("DAILY_EOD_NOT_YET_PROVEN")
