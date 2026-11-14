@@ -94,5 +94,8 @@ async function tick(){
 await waitForService();
 process.stdout.write(fmt()+' paper market collector ready; Europe/Paris 20:45 EUR, 23:15 USD; startup history recovery\n');
 await tick();
+if(process.argv.includes('--once')){
+ await pool.end();process.exit(0);
+}
 setInterval(()=>{void tick()},60000);
 process.on('SIGTERM',()=>{void pool.end().finally(()=>process.exit(0))});
