@@ -86,10 +86,18 @@ def guard_root():
         raise RuntimeError("Tracked working tree has local modifications; no automatic overwrite")
     # Never allow checkout to overwrite an untracked file; Git itself will
     # enforce collisions on switch even when untracked files are present.
+    # An explicit 'git fetch origin feature/...' is guaranteed to set
+    # FETCH_HEAD, but is NOT guaranteed to update origin/feature/... .
+    # Avoid incorrectly blocking users with single-ref fetch configurations.
+    origin=git("remote","get-url","origin")
+    if not (origin.startswith("https://github.com/besse79/cto-weinstein-trader") or
+            origin.startswith("git@github.com:besse79/cto-weinstein-trader")):
+        raise RuntimeError("Unrecognized GitHub origin: release source not trusted")
     target=git("rev-parse","FETCH_HEAD")
-    remote=git("rev-parse","refs/remotes/origin/"+BRANCH)
-    if target!=remote:
-        raise RuntimeError("FETCH_HEAD is not the feature branch fetched explicitly")
+    branch_ref=subprocess.run(["git","rev-parse","--verify",
+        "refs/remotes/origin/"+BRANCH],cwd=ROOT,capture_output=True,text=True)
+    if branch_ref.returncode==0 and branch_ref.stdout.strip()!=target:
+        raise RuntimeError("Origin tracking ref differs from FETCH_HEAD; fetch branch again")
     git("cat-file","-e",target+":scripts/stage_v4_universe.py")
     return target
 
