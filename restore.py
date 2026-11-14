@@ -44,6 +44,8 @@ def main():
         if not dump.exists():raise RuntimeError("No pre-existing database dump in this first-install backup")
         if input("Type RESTORE to overwrite local paper DB and source: ")!="RESTORE":
             raise RuntimeError("Restore cancelled")
+        # Prevent the scheduled collector writing while the database is restored.
+        docker("--profile","automation","stop","scheduler")
         docker("stop","web")
         docker("up","-d","db")
         docker("exec","-T","db","pg_restore","--list",input_data=dump.read_bytes())
