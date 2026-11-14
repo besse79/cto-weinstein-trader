@@ -303,3 +303,21 @@ Si les liens directs sont indisponibles, accéder à la page officielle <https:/
 Pour réutiliser les 503 titres S&P déjà validés, utiliser en plus `--sp500-file /home/benoit/cto-weinstein-previews/20261114T172446Z/sp500.csv`. L'empreinte et le rapport antérieur restent la provenance de cet instantané.
 
 Ne pas déployer la branche ni lancer d'apprentissage tant que les 600 composants européens et la correspondance fournisseur ne sont pas validés.
+
+### V4.1 : références complètes vérifiées et mise en base conditionnelle
+
+Le diagnostic GitHub du 14 novembre 2026 a validé, sans import PostgreSQL, un fichier EXSA BlackRock de **602 actions** daté du **12 novembre 2026**, après correction de QIA.DE et VSURE.ST. Le fichier public S&P 500 comporte **503 lignes** datées du **14 novembre 2026**. Total : **1 105 lignes de référence**, qui peuvent comporter des doublons avec les instruments déjà suivis. EXSA = **positions de l'ETF, pas composition officielle de STOXX**. Ne pas confondre ces fichiers avec des données de cours validées.
+
+Le précontrôle `scripts/v4_1_universe_preflight.py` écrit désormais un `manifest.json` dans son dossier horodaté. Exemple sur WSL :
+
+```bash
+python3 scripts/v4_1_universe_preflight.py \
+  --sp500-file "$HOME/cto-weinstein-previews/20261114T172446Z/sp500.csv" \
+  --sp500-as-of 2026-11-14
+```
+
+La sortie `PREVIEWS_COMPLETE` est nécessaire pour passer aux étapes suivantes. La commande `python3 scripts/stage_v4_universe.py /chemin/manifest.json` effectue **uniquement une validation en lecture**, et vérifie les empreintes SHA256, les dates, les comptes exacts et les collisions de devises.
+
+Un import dans la base existante n'est possible **qu'après déploiement sécurisé et recette sur WSL**, en exécutant `stage_v4_universe.py ... --apply --acknowledge-proxy` depuis la véritable installation (avec `.git` et `.env`). Il réalise une sauvegarde source+PostgreSQL vérifiée et insère les deux compositions en **une seule transaction**. Il ne récupère pas les 5 ans de cours, ne passe aucun ordre PAPER et n'autorise aucune transaction réelle. Tant que les cours ne sont pas chargés et contrôlés, aucun indice étendu n'est prêt à être analysé.
+
+**Ne pas déclencher l'import à partir d'une copie temporaire créée avec `git archive`** : la sauvegarde doit pointer sur l'application installée.
