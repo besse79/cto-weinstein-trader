@@ -87,7 +87,10 @@ def fetch_preview(dest,*,as_of="auto",local_file=None):
             except urllib.error.URLError as exc:
                 tried.append("BlackRock URL network error: "+str(exc.reason)[:120])
             except (ValueError,UnicodeDecodeError,csv.Error) as exc:
-                tried.append(str(exc)[:160])
+                # Keep ALL distinct unresolved exchange categories visible.
+                # Truncation previously hid two remaining symbols after the
+                # first 160 characters of the BlackRock source diagnosis.
+                tried.append(str(exc)[:3000])
         if used is None:
             raise ValueError("EXSA CSV not available from published endpoints; "+
                              "; ".join(tried)+
