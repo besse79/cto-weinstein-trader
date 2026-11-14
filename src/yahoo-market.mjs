@@ -1,7 +1,8 @@
 /**
- * Yahoo Finance chart adapter, for user-initiated PERSONAL research.
+ * Yahoo Finance chart adapter for personal PAPER research.
  * The Yahoo chart endpoint is unofficial, unauthenticated and not guaranteed.
- * No scraping evasion, credentials, proxy rotation or automated polling.
+ * A bounded daily close-only worker may call it under applicable permissions;
+ * no aggressive intraday polling, scraping evasion or proxy rotation.
  */
 export const YAHOO_PROVIDER='YAHOO_UNOFFICIAL';
 export const HISTORY_RANGE='5y';
