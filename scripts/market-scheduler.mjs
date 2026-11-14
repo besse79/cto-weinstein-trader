@@ -115,12 +115,12 @@ async function tick(){
   const clock=parisClock();
   await execute('BOOTSTRAP',clock);
   if(dayOfWeek(clock)&&minuteTime(clock,'20:45'))await execute('EU_CLOSE',clock);
-  if(dayOfWeek(clock)&&minuteTime(clock,'23:15'))await execute('US_CLOSE',clock);
+  if(dayOfWeek(clock)&&minuteTime(clock,'23:45'))await execute('US_CLOSE',clock);
  }catch(e){process.stderr.write(fmt()+' scheduler: '+safeError(e)+'\n')}
  finally{running=false}
 }
 await waitForService();
-process.stdout.write(fmt()+' paper market collector ready; Europe/Paris 20:45 EUR, 23:15 USD; startup history recovery\n');
+process.stdout.write(fmt()+' paper market collector ready; Europe/Paris 20:45 EUR, 23:45 USD; startup history recovery\n');
 await tick();
 if(process.argv.includes('--once')){
  await pool.end();process.exit(0);
