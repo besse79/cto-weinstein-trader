@@ -256,7 +256,7 @@ La disponibilité des 600 composants européens reste bloquée par une source de
 
 Le contrôle de recette `python3 scripts/v4_release_gate.py` interroge **uniquement en lecture** les API locales `127.0.0.1:3010`. Il vérifie : statut PAPER, capital initial 500 EUR, couverture historique des instruments existants, existence d'une collecte réussie, cohérence des candidats et disponibilité du backtest multi-actifs. Il renvoie `BLOCKED` (code 1) en cas d'échec ; `MANUAL_PAPER_REVIEW` (code 0) n'est **pas** une certification de performance ou de données licenciées. Ne jamais exécuter des ordres réels.
 
-Clôturer V4 seulement après une recette WSL des cotations et signaux réels, du scheduler sur une clôture européenne et américaine, du contrôle des stops et des sauvegardes/restaurations. La suite V4.1 élargit le référentiel mais ne change pas les contraintes de simulation : EUR uniquement et maximum 150 titres pour le backtest partagé existant. Un univers étendu sera **bloqué** sur ce backtest tant que la montée en charge et les benchmarks/FX ne seront pas revus. La V5 ne doit démarrer qu'après ces contrôles documentés.
+Clôturer V4 seulement après une recette WSL des cotations et signaux réels, du scheduler sur une clôture européenne et américaine, du contrôle des stops et des sauvegardes/restaurations. La suite V4.1 élargit le référentiel mais ne change pas les contraintes de simulation : EUR uniquement et maximum 750 titres pour le backtest partagé existant. Un univers étendu sera **bloqué** sur ce backtest tant que la montée en charge et les benchmarks/FX ne seront pas revus. La V5 ne doit démarrer qu'après ces contrôles documentés.
 
 ## Revue Weinstein le week-end (V4.1)
 
