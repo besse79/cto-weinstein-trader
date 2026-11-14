@@ -94,10 +94,9 @@ def guard_root():
             origin.startswith("git@github.com:besse79/cto-weinstein-trader")):
         raise RuntimeError("Unrecognized GitHub origin: release source not trusted")
     target=git("rev-parse","FETCH_HEAD")
-    branch_ref=subprocess.run(["git","rev-parse","--verify",
-        "refs/remotes/origin/"+BRANCH],cwd=ROOT,capture_output=True,text=True)
-    if branch_ref.returncode==0 and branch_ref.stdout.strip()!=target:
-        raise RuntimeError("Origin tracking ref differs from FETCH_HEAD; fetch branch again")
+    fetch_info=Path(git("rev-parse","--git-path","FETCH_HEAD")).read_text()
+    if "branch '"+BRANCH+"'" not in fetch_info:
+        raise RuntimeError("FETCH_HEAD is not the explicitly requested feature branch")
     git("cat-file","-e",target+":scripts/stage_v4_universe.py")
     return target
 
