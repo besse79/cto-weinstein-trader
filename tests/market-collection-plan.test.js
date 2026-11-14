@@ -75,3 +75,13 @@ test('bootstrap does not permanently starve a large set of failed histories',()=
  }
  assert.equal(observed.size,300);
 });
+
+test('European non-euro equities are assigned to European post-close collection',()=>{
+ const multi=[{symbol:'AZN.L',currency:'GBP',bars:1100,last_day:'2026-11-12'},
+  {symbol:'NOVN.SW',currency:'CHF',bars:1100,last_day:'2026-11-12'},
+  {symbol:'AAPL',currency:'USD',bars:1100,last_day:'2026-11-12'}];
+ const europe=selectMarketBatches(multi,'EU_CLOSE','2026-11-13');
+ const usa=selectMarketBatches(multi,'US_CLOSE','2026-11-13');
+ assert.deepEqual(new Set(europe.groups.flatMap(x=>x.symbols)),new Set(['AZN.L','NOVN.SW']));
+ assert.deepEqual(usa.groups.flatMap(x=>x.symbols),['AAPL']);
+});
