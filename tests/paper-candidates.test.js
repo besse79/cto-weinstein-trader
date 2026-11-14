@@ -16,6 +16,8 @@ test('Monday: accepts only completed previous week stage 2, sizes whole shares',
  const r=run([make()]);
  assert.equal(r.eligibleCount,1);
  assert.equal(r.candidates[0].quantity,1);
+ assert.equal(r.orderWindowOpen,true);
+ assert.equal(r.candidates[0].orderAllowed,true);
  assert.equal(r.candidates[0].maxPlannedLoss,3);
  assert.equal(r.signalWeekExpected,'2026-11-09');
  assert.equal(r.candidates[0].quoteDay,friday);
@@ -76,6 +78,10 @@ test('Saturday and Sunday show the same confirmed Friday breakouts for weekend r
   const summary=run([make()],{asOf});
   assert.equal(summary.signalWeekExpected,'2026-11-09');
   assert.equal(summary.eligibleCount,1);
+  assert.equal(summary.orderWindowOpen,false);
+  assert.equal(summary.weekendResearchOnly,true);
+  assert.equal(summary.candidates[0].orderAllowed,false);
+  assert.deepEqual(summary.candidates[0].orderReasons,['MARKET_CLOSED_WEEKEND']);
   assert.equal(summary.candidates[0].quoteDay,friday);
  }
 });
