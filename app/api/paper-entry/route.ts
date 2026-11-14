@@ -19,8 +19,10 @@ export async function POST(request:NextRequest){
   return Response.json({error:'Invalid symbol'},{status:400});
  try{
   const state=await computeCandidates();
+  if(state.orderWindowOpen!==true)
+   return Response.json({error:'Weekend is research-only; PAPER entry blocked',reasons:['MARKET_CLOSED_WEEKEND']},{status:409});
   const candidate=state.candidates.find((x:{symbol:string})=>x.symbol===symbol);
-  if(!candidate||!candidate.eligible||candidate.quantity<1)
+  if(!candidate||!candidate.eligible||candidate.orderAllowed!==true||candidate.quantity<1)
    return Response.json({error:'PAPER entry blocked: no currently eligible confirmed signal',
     reasons:candidate?.reasons??['SYMBOL_UNAVAILABLE']},{status:409});
   const internal=new NextRequest(request.url,{
