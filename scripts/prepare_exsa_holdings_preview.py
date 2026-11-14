@@ -93,10 +93,16 @@ def pick(fieldnames,options):
     return next((f for f in fieldnames if f.strip().upper() in options),None)
 
 def normalize_exchange(value):
-    text=unicodedata.normalize("NFKD",value).encode("ascii","ignore").decode("ascii")
+    # German Börse / Boerse variants must normalize to the SAME token.
+    # NFKD alone changes 'ö' to 'o', which previously lost QIA.DE.
+    translated=value.translate(str.maketrans({
+        "ä":"ae","Ä":"AE","ö":"oe","Ö":"OE",
+        "ü":"ue","Ü":"UE","ß":"ss"
+    }))
+    text=unicodedata.normalize("NFKD",translated).encode("ascii","ignore").decode("ascii")
     return " ".join(re.sub(r"[^A-Z0-9 ]"," ",text.upper()).split())
 
-def exchange_suffix(value,currency):
+def exchange_suffix(value,currency,ticker=None,name=None):
     x=normalize_exchange(value)
     for key,suffix in SUFFIXES.items():
         clean=normalize_exchange(key)
@@ -104,7 +110,16 @@ def exchange_suffix(value,currency):
             return suffix
     # Only when the exchange explicitly says Nordic *without* a country
     # do we use the already verified Nordic currency. No EUR/GBP guessing.
-    return CURRENCY_SUFFIX.get(currency) if x in {"NASDAQ OMX NORDIC","NASDAQ NORDIC"} else None
+    if x in {"NASDAQ OMX NORDIC","NASDAQ NORDIC"}:
+        if currency in CURRENCY_SUFFIX:
+            return CURRENCY_SUFFIX[currency]
+        # VSURE trades on Stockholm, but uniquely quotes EUR there.
+        # This is a verified security exception, NOT a general EUR->Stockholm
+        # rule. Unknown EUR Nordic tickers must remain blocked.
+        if (currency=="EUR" and ticker=="VSURE" and
+            "VERISURE" in (name or "").upper()):
+            return ".ST"
+    return None
 
 def transform(raw,expected_day):
     if not isinstance(raw,bytes) or not 100<=len(raw)<=1_000_000:
@@ -144,12 +159,12 @@ def transform(raw,expected_day):
         currency=item[currency_col].strip().upper()
         if currency not in SUPPORTED:
             unknown.append((raw_ticker,"CURRENCY:"+currency));continue
-        suffix=exchange_suffix(item[exchange_col],currency)
+        name=item[name_col].strip()
+        suffix=exchange_suffix(item[exchange_col],currency,raw_ticker,name)
         if suffix is None:
             unknown.append((raw_ticker,"EXCHANGE:"+item[exchange_col]));continue
         ticker=re.sub(r"\s+","-",raw_ticker.strip(".").replace("/","-"))
         symbol=ticker+suffix
-        name=item[name_col].strip()
         if not re.fullmatch(r"[A-Z0-9.^-]{1,24}",symbol) or not name or len(name)>180:
             unknown.append((raw_ticker,"INVALID_TICKER_OR_NAME"));continue
         if symbol in seen:raise ValueError(f"Duplicate mapped Yahoo symbol: {symbol}")
