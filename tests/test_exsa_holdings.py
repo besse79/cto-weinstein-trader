@@ -7,6 +7,8 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
 from prepare_exsa_holdings_preview import convert,snapshot_date,exchange_suffix
 from import_index_universe import parse_csv
+from fetch_exsa_preview import fetch_preview,SOURCE
+from unittest.mock import patch
 
 class ExsaHoldingsTests(unittest.TestCase):
     def fixture(self,d,as_of=None,bad_exchange=False):
@@ -63,6 +65,40 @@ class ExsaHoldingsTests(unittest.TestCase):
         self.assertEqual(snapshot_date([["Fondspositionen per","14.Nov.2026"]]),date(2026,11,14))
         self.assertEqual(exchange_suffix("NASDAQ OMX COPENHAGEN","DKK"),".CO")
         self.assertIsNone(exchange_suffix("UNKNOWN","EUR"))
+
+    def test_one_shot_official_domain_download_mock(self):
+        with tempfile.TemporaryDirectory() as d:
+            src=self.fixture(d)
+            dest=Path(d)/"online-preview.csv"
+            raw=src.read_bytes()
+            class Response:
+                status=200
+                def geturl(self): return SOURCE
+                def read(self,n): return raw[:n]
+                def __enter__(self): return self
+                def __exit__(self,*args): return False
+            with patch("fetch_exsa_preview.urllib.request.urlopen",return_value=Response()):
+                result=fetch_preview(dest)
+            self.assertEqual(result["holdings"],600)
+            self.assertEqual(len(parse_csv(dest)),600)
+            with self.assertRaises(FileExistsError):
+                fetch_preview(dest)
+
+    def test_untrusted_redirect_is_refused_without_writing(self):
+        with tempfile.TemporaryDirectory() as d:
+            src=self.fixture(d)
+            dest=Path(d)/"blocked.csv"
+            raw=src.read_bytes()
+            class Response:
+                status=200
+                def geturl(self): return "https://untrusted.example/download"
+                def read(self,n): return raw[:n]
+                def __enter__(self): return self
+                def __exit__(self,*args): return False
+            with patch("fetch_exsa_preview.urllib.request.urlopen",return_value=Response()):
+                with self.assertRaisesRegex(ValueError,"redirected"):
+                    fetch_preview(dest)
+            self.assertFalse(dest.exists())
 
 if __name__=="__main__":
     unittest.main()
