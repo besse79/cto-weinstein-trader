@@ -1,3 +1,4 @@
+import {parisClock} from '../../../src/market-collection-plan.mjs';
 import {pool} from '../../../lib/db';
 import {scanWeinstein} from '../../../src/weinstein.mjs';
 import {explainSetup} from '../../../src/weinstein-explain.mjs';
@@ -9,7 +10,7 @@ const BAR_SQL="SELECT day::text AS day,open::float8 AS open,high::float8 AS high
 
 export async function GET(){
  try{
-  const now=new Date(),asOf=now.toISOString().slice(0,10);
+  const now=new Date(),asOf=parisClock(now).day;
   const all=(await pool.query("SELECT id,symbol,name,currency FROM instruments ORDER BY symbol")).rows;
   const benchmarks=new Map<string,unknown[]>();
   for(const [currency,symbol] of Object.entries(BENCHMARK_BY_CURRENCY)){
