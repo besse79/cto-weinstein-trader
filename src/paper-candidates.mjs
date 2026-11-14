@@ -21,6 +21,11 @@ export function screenPaperCandidates(scanner,dashboard,{
  const previousMonday=new Date(Date.parse(weeksMonday(asOf)+'T12:00:00Z')-7*86400000)
   .toISOString().slice(0,10);
  const age=day=>parseDay(day)?(Date.parse(asOf+'T12:00:00Z')-Date.parse(day+'T12:00:00Z'))/86400000:Infinity;
+ // Without a verified prior Friday candle, the prior ISO week may only
+ // contain a partial Mon-Thu aggregate, which must not confirm a breakout.
+ // Conservative on Friday exchange holidays until a calendar is available.
+ const requiredPriorClose=new Date(Date.parse(previousMonday+'T12:00:00Z')+4*86400000)
+  .toISOString().slice(0,10);
  const positions=Array.isArray(dashboard.positions)?dashboard.positions:[];
  const held=new Set(positions.map(p=>p.symbol));
  const remainingSlots=Math.max(0,4-positions.length);
@@ -33,7 +38,9 @@ export function screenPaperCandidates(scanner,dashboard,{
   const signalDay=x.asOf; // Last COMPLETED WEEK's trading date from scanWeinstein.
   const signalWeek=parseDay(signalDay)?weeksMonday(signalDay):null;
   if(!benchmarkFresh)reasons.push('BENCHMARK_STALE');
+  if(!benchmarkDay||benchmarkDay<requiredPriorClose)reasons.push('PREVIOUS_WEEK_BENCHMARK_INCOMPLETE');
   if(!last||age(last.day)<0||age(last.day)>4)reasons.push('QUOTE_STALE');
+  if(!last||last.day<requiredPriorClose)reasons.push('PREVIOUS_WEEK_QUOTE_INCOMPLETE');
   if(!x.eligible||x.signal!=='PHASE2_BREAKOUT')reasons.push('NO_CONFIRMED_BREAKOUT');
   if(signalWeek!==previousMonday)reasons.push('SIGNAL_NOT_PREVIOUS_WEEK');
   if(held.has(x.symbol))reasons.push('ALREADY_HELD');
