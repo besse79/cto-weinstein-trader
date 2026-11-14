@@ -19,7 +19,7 @@ export async function GET(){
      FROM market_job_runs ORDER BY started_at DESC LIMIT 12`)
   ]);
   return Response.json({coverage:coverage.rows[0],jobs:jobs.rows,
-   schedule:{timezone:'Europe/Paris',eur:'20:45 weekdays',usd:'23:15 weekdays'},
+   schedule:{timezone:'Europe/Paris',eur:'20:45 weekdays',usd:'23:45 weekdays'},
    reminder:'The Docker scheduler only executes while the Docker engine is running; no broker orders.'},{
     headers:{'Cache-Control':'no-store'}
    });
