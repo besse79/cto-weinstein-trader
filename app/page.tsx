@@ -9,6 +9,7 @@ type Scan={id:number;symbol:string;name:string;signal:string;stage?:string;stage
 type PortfolioBacktest={initialCash:number;finalCash:number;finalEquity:number;returnPct:number;tradeCount:number;maxDrawdownPct:number;winRatePct:number|null;holdWeeks:number;symbolsAnalyzed:number;equityCurve:{week:string;cash:number;equity:number;openPositions:number}[];trades:{symbol:string;signalWeek:string;entryWeek:string;exitWeek:string;quantity:number;pnl:number;exitReason:string}[];skipped:{symbol:string;week?:string;reason:string}[];positionsOpen:string[];periods:{name:string;from:string|null;to:string|null;weeks:number;returnPct:number|null;trades:number}[];assumptions:string[]};
 type PaperCandidate={id:number;symbol:string;name:string;signal:string;signalWeek:string|null;quoteDay:string|null;quotePrice:number|null;stop:number|null;relativeStrength:number|null;volumeRatio:number|null;quantity:number;maxPlannedLoss:number|null;fee:number;eligible:boolean;orderAllowed:boolean;orderReasons:string[];reasons:string[]};
 type PaperCandidates={mode:string;asOf:string;benchmarkDay:string|null;benchmarkFresh:boolean;eligibleCount:number;cash:number;positionsOpen:number;orderWindowOpen:boolean;weekendResearchOnly:boolean;signalWeekExpected:string;candidates:PaperCandidate[];limitations:string[]};
+type IndexCoverage={status:string;priorFriday?:string;indices:{index_code:string;snapshot_day:string;constituents:number;with_history:number;with_three_years:number;with_friday_close:number;fridayCoveragePct:number;readyForWeekendReview:boolean;currencies:Record<string,number>}[]};
 type MarketStatus={coverage:{instruments:number;with_history:number;needing_history:number;recent:number};jobs:{job_type:string;business_day:string;status:string;succeeded_symbols:number;failed_symbols:number;attempted_symbols:number;message:string|null;started_at:string}[];schedule:{timezone:string;eur:string;usd:string}};
 type Dashboard={mode:string;initial:number;cash:number;equity:number;signals:Signal[];positions:Position[];orders:Order[];error?:string};
 const euro=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
@@ -16,6 +17,7 @@ export default function Home(){
  const [tab,setTab]=useState(0),[data,setData]=useState<Dashboard|null>(null),[scans,setScans]=useState<Scan[]>([]),[token,setToken]=useState(''),[message,setMessage]=useState('');
  const [paperCandidates,setPaperCandidates]=useState<PaperCandidates|null>(null),[paperError,setPaperError]=useState(''),[paperBusy,setPaperBusy]=useState(false),[paperOrderBusy,setPaperOrderBusy]=useState(false);
  const [marketStatus,setMarketStatus]=useState<MarketStatus|null>(null);
+ const [indexCoverage,setIndexCoverage]=useState<IndexCoverage|null>(null);
  const [portfolioHorizon,setPortfolioHorizon]=useState(12),[portfolioBacktest,setPortfolioBacktest]=useState<PortfolioBacktest|null>(null),[portfolioBacktestError,setPortfolioBacktestError]=useState(''),[portfolioBusy,setPortfolioBusy]=useState(false);
  const [syncBusy,setSyncBusy]=useState(false),[batches,setBatches]=useState<UniverseBatch[]>([]),[batchIndex,setBatchIndex]=useState(0),[screenView,setScreenView]=useState<'TOP'|'PHASE2'|'PHASE1'|'OTHER'|'MISSING'>('TOP');
  async function load(){try{
@@ -58,9 +60,14 @@ export default function Home(){
   finally{setPaperOrderBusy(false)}
  }
  async function loadMarketStatus(){
-  try{const r=await fetch('/api/market/collection-status',{cache:'no-store'});
+  try{
+   const [r,u]=await Promise.all([
+    fetch('/api/market/collection-status',{cache:'no-store'}),
+    fetch('/api/market/universe-coverage',{cache:'no-store'})
+   ]);
    if(r.ok)setMarketStatus(await r.json());
-  }catch{/* scheduler status remains optional if DB is unavailable */}
+   if(u.ok)setIndexCoverage(await u.json());
+  }catch{/* optional status and coverage if DB is unavailable */}
  }
  useEffect(()=>{void load();void loadPaperCandidates();void loadMarketStatus()},[]);
  async function syncYahoo(){
@@ -153,6 +160,18 @@ export default function Home(){
     {marketStatus.jobs.length?<div className="table"><table><thead><tr><th>Dernier traitement</th><th>Date</th><th>État</th><th>Actions mises à jour</th><th>Échecs</th></tr></thead><tbody>
      {marketStatus.jobs.slice(0,5).map((j,i)=><tr key={i}><td>{j.job_type}</td><td>{j.business_day}</td><td>{j.status}</td><td>{j.succeeded_symbols}</td><td>{j.failed_symbols}</td></tr>)}
     </tbody></table></div>:<p className="muted">Aucun traitement planifié enregistré. Vérifier que le conteneur de collecte est démarré.</p>}
+   </div>}
+   {indexCoverage?.status==='OBSERVED'&&<div className="chart-panel">
+    <h3>Couverture des univers étendus</h3>
+    <p className="muted">Dernier vendredi terminé : {indexCoverage.priorFriday}. Le statut contrôle les historiques et les cours du vendredi, pas la légitimité de la composition officielle.</p>
+    <div className="table"><table><thead><tr><th>Référentiel</th><th>Dernière composition</th><th>Titres</th><th>Historique ≥ 250 séances</th><th>Cours du vendredi</th><th>Couverture</th><th>Revue globale</th></tr></thead><tbody>
+     {indexCoverage.indices.map(x=><tr key={x.index_code}>
+      <td>{x.index_code==='STOXX600_ETF_PROXY'?'EXSA — positions ETF (proxy)':x.index_code}</td>
+      <td>{x.snapshot_day}</td><td>{x.constituents}</td><td>{x.with_history}</td>
+      <td>{x.with_friday_close}</td><td>{x.fridayCoveragePct} %</td>
+      <td>{x.readyForWeekendReview?'Prête':'Incomplète'}</td>
+     </tr>)}
+    </tbody></table></div>
    </div>}
    <div className="chart-panel">
     <div className="chart-toolbar">
