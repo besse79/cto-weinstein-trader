@@ -1,0 +1,260 @@
+'use client';
+import {useEffect,useState} from 'react';
+import Link from 'next/link';
+type Signal={id:number;symbol:string;name:string;currency:string;status:string;last:{day:string;close:number}|null};
+type Position={id:number;symbol:string;name:string;qty:number;avg:number;last:number|null;quoteDate:string|null;stop:number|null;alert:string};
+type Order={id:number;symbol:string;side:string;qty:number;price:number;fee:number;created_at:string};
+type UniverseBatch={id:string;name:string;symbols:string[];instruments:{symbol:string;name:string;bars:number;last_day:string|null}[]};
+type Scan={id:number;symbol:string;name:string;signal:string;stage?:string;stageRank?:number;setupScore?:number;watchScore?:number|null;watchStatus?:string;provisional?:boolean;currentResistance?:number|null;distanceToResistancePct?:number|null;watchReasons?:string[];reasons?:string[];distanceFromMaPct?:number;resistanceDistancePct?:number;maSlope6Pct?:number;priorDeclinePct?:number;eligible:boolean;last:{day:string;close:number}|null;ma30?:number;volumeRatio?:number;relativeStrength?:number;priorHigh?:number};
+type PortfolioBacktest={initialCash:number;finalCash:number;finalEquity:number;returnPct:number;tradeCount:number;maxDrawdownPct:number;winRatePct:number|null;holdWeeks:number;symbolsAnalyzed:number;equityCurve:{week:string;cash:number;equity:number;openPositions:number}[];trades:{symbol:string;signalWeek:string;entryWeek:string;exitWeek:string;quantity:number;pnl:number;exitReason:string}[];skipped:{symbol:string;week?:string;reason:string}[];positionsOpen:string[];periods:{name:string;from:string|null;to:string|null;weeks:number;returnPct:number|null;trades:number}[];assumptions:string[]};
+type PaperCandidate={id:number;symbol:string;name:string;signal:string;signalWeek:string|null;quoteDay:string|null;quotePrice:number|null;stop:number|null;relativeStrength:number|null;volumeRatio:number|null;quantity:number;maxPlannedLoss:number|null;fee:number;eligible:boolean;reasons:string[]};
+type PaperCandidates={mode:string;asOf:string;benchmarkDay:string|null;benchmarkFresh:boolean;eligibleCount:number;cash:number;positionsOpen:number;signalWeekExpected:string;candidates:PaperCandidate[];limitations:string[]};
+type MarketStatus={coverage:{instruments:number;with_history:number;needing_history:number;recent:number};jobs:{job_type:string;business_day:string;status:string;succeeded_symbols:number;failed_symbols:number;attempted_symbols:number;message:string|null;started_at:string}[];schedule:{timezone:string;eur:string;usd:string}};
+type Dashboard={mode:string;initial:number;cash:number;equity:number;signals:Signal[];positions:Position[];orders:Order[];error?:string};
+const euro=(n:number|null|undefined)=>n==null?'—':n.toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
+export default function Home(){
+ const [tab,setTab]=useState(0),[data,setData]=useState<Dashboard|null>(null),[scans,setScans]=useState<Scan[]>([]),[token,setToken]=useState(''),[message,setMessage]=useState('');
+ const [paperCandidates,setPaperCandidates]=useState<PaperCandidates|null>(null),[paperError,setPaperError]=useState(''),[paperBusy,setPaperBusy]=useState(false),[paperOrderBusy,setPaperOrderBusy]=useState(false);
+ const [marketStatus,setMarketStatus]=useState<MarketStatus|null>(null);
+ const [portfolioHorizon,setPortfolioHorizon]=useState(12),[portfolioBacktest,setPortfolioBacktest]=useState<PortfolioBacktest|null>(null),[portfolioBacktestError,setPortfolioBacktestError]=useState(''),[portfolioBusy,setPortfolioBusy]=useState(false);
+ const [syncBusy,setSyncBusy]=useState(false),[batches,setBatches]=useState<UniverseBatch[]>([]),[batchIndex,setBatchIndex]=useState(0),[screenView,setScreenView]=useState<'TOP'|'PHASE2'|'PHASE1'|'OTHER'|'MISSING'>('TOP');
+ async function load(){try{
+  const [r,s,u]=await Promise.all([
+    fetch('/api/dashboard',{cache:'no-store'}),
+    fetch('/api/scanner',{cache:'no-store'}),
+    fetch('/api/universe',{cache:'no-store'})
+  ]);
+  const [j,scanned,universe]=await Promise.all([r.json(),s.json(),u.json()]);
+  setData(j);setScans(Array.isArray(scanned.results)?scanned.results:[]);
+  setBatches(Array.isArray(universe.batches)?universe.batches:[]);
+ }catch{setMessage('API indisponible')}}
+ async function loadPaperCandidates(){
+  setPaperBusy(true);setPaperError('');
+  try{
+   const response=await fetch('/api/paper-candidates',{cache:'no-store'});
+   const result=await response.json();
+   if(!response.ok)throw Error(result.error||'Sélection indisponible');
+   setPaperCandidates(result);
+  }catch(e){setPaperCandidates(null);setPaperError(String(e))}
+  finally{setPaperBusy(false)}
+ }
+ async function buyPaper(x:PaperCandidate){
+  if(!x.eligible||x.quantity<1||paperOrderBusy)return;
+  if(!confirm('Confirmer un achat FICTIF de '+x.quantity+' × '+x.symbol+
+   ' au dernier cours enregistré du '+x.quoteDay+' ('+euro(x.quotePrice)+
+   '), stop '+euro(x.stop)+' et frais '+euro(x.fee)+
+   ' ? Ce n’est PAS un cours de marché en direct.'))return;
+  setPaperOrderBusy(true);
+  try{
+   const r=await fetch('/api/local-actions',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'buy',symbol:x.symbol})});
+   const data=await r.json();
+   setMessage(r.ok?'Achat fictif confirmé : '+data.quantity+' × '+x.symbol+
+    ' au cours indicatif enregistré du '+data.referenceDay:
+    'Achat refusé : '+(data.error||'Données ou risque invalides'));
+   await load();await loadPaperCandidates();
+  }catch{setMessage('Achat fictif indisponible : API ou connexion')}
+  finally{setPaperOrderBusy(false)}
+ }
+ async function loadMarketStatus(){
+  try{const r=await fetch('/api/market/collection-status',{cache:'no-store'});
+   if(r.ok)setMarketStatus(await r.json());
+  }catch{/* scheduler status remains optional if DB is unavailable */}
+ }
+ useEffect(()=>{void load();void loadPaperCandidates();void loadMarketStatus()},[]);
+ async function syncYahoo(){
+  const batch=batches[batchIndex];
+  if(!batch?.symbols.length){setMessage('Aucun lot de surveillance disponible');return}
+  setSyncBusy(true);setMessage('Import des historiques en cours...');
+  try{
+   const response=await fetch('/api/local-actions',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'sync',symbols:batch.symbols})});
+   const result=await response.json();
+   if(!response.ok){setMessage('Import bloqué : '+(result.detail||result.error||'Yahoo indisponible'));return}
+   setMessage('Lot '+(batchIndex+1)+' importé : '+result.results.length+' instruments, '+result.total+' bougies journalières. Aucune transaction générée.');
+   await load();
+  }catch{setMessage('Import impossible : réseau ou API indisponible')}
+  finally{setSyncBusy(false)}
+ }
+ async function syncAllYahoo(){
+  if(!batches.length){setMessage('Aucun lot disponible');return}
+  if(!confirm('Importer manuellement les '+batches.length+' lots Yahoo ? Chaque lot est limité à six instruments.'))return;
+  setSyncBusy(true);
+  let ok=0;
+  try{
+   for(const batch of batches){
+    setMessage('Import Yahoo : lot '+(ok+1)+' / '+batches.length+'...');
+    const r=await fetch('/api/local-actions',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({action:'sync',symbols:batch.symbols})});
+    const result=await r.json();
+    if(!r.ok)throw Error('Lot '+(ok+1)+' bloqué : '+(result.detail||result.error||'Échec'));
+    ok++;
+   }
+   setMessage(ok+' lots Yahoo importés. Scanner et candidats recalculés.');
+  }catch(e){setMessage('Import partiel : '+ok+' / '+batches.length+' lots terminés. '+String(e))}
+  finally{setSyncBusy(false);await load();await loadPaperCandidates()}
+ }
+ async function loadPortfolioBacktest(weeks=portfolioHorizon){
+  setPortfolioBusy(true);setPortfolioBacktestError('');
+  try{
+   const response=await fetch('/api/portfolio-backtest?weeks='+weeks,{cache:'no-store'});
+   const data=await response.json();
+   if(!response.ok)throw Error(data.error||'Simulation portefeuille indisponible');
+   setPortfolioBacktest(data.result);
+  }catch(e){setPortfolioBacktest(null);setPortfolioBacktestError(String(e))}
+  finally{setPortfolioBusy(false)}
+ }
+ const validScans=scans.filter(s=>typeof s.watchScore==='number' && s.watchStatus!=='UNAVAILABLE');
+ const topScans=[...validScans].sort((a,b)=>(b.watchScore??0)-(a.watchScore??0)||a.symbol.localeCompare(b.symbol)).slice(0,5);
+ const missingScans=scans.filter(s=>['NO_DATA','STALE_DATA','NO_BENCHMARK','STALE_BENCHMARK','INSUFFICIENT_HISTORY','INSUFFICIENT_BENCHMARK'].includes(s.signal));
+ const visibleScans=screenView==='TOP'?topScans:scans.filter(s=>
+   screenView==='PHASE2'?['PHASE2_BREAKOUT','PHASE2_EXTENDED'].includes(s.signal):
+   screenView==='PHASE1'?['PHASE1_LATE','PHASE1_BASE'].includes(s.signal):
+   screenView==='MISSING'?missingScans.includes(s):
+   !['PHASE2_BREAKOUT','PHASE2_EXTENDED','PHASE1_LATE','PHASE1_BASE'].includes(s.signal) && !missingScans.includes(s));
+ async function order(p:Position,side:'SELL'){
+  if(!p.last)return;
+  const q=Number(prompt('Quantité paper à vendre',String(p.qty)));
+  if(!Number.isFinite(q)||q<=0||q>p.qty)return;
+  if(!confirm('Confirmer la vente fictive de '+q+' × '+p.symbol+' ?'))return;
+  const r=await fetch('/api/local-actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sell',instrumentId:p.id,qty:q,price:p.last})});
+  const j=await r.json();setMessage(j.ok?'Vente paper enregistrée':j.error||'Erreur');await load();
+ }
+ return <main>
+  <header><div><h1>CTO Weinstein Trader</h1><small>Stratégie Weinstein · Yahoo Finance (cours non officiels) · Simulation interne</small></div><span className="badge">PAPER ONLY</span></header>
+  <nav><button className={tab===0?'active':''} onClick={()=>setTab(0)}>01 · Trades du matin</button><button className={tab===1?'active':''} onClick={()=>setTab(1)}>02 · Portefeuille</button><button className={tab===2?'active':''} onClick={()=>{setTab(2);void loadPortfolioBacktest()}}>03 · Backtest V4</button><button title="Recharge les données locales affichées, sans contacter Yahoo Finance" onClick={()=>{void load();void loadPaperCandidates();void loadMarketStatus();if(tab===2)void loadPortfolioBacktest()}}>Actualiser l’affichage</button></nav>
+  
+  {message&&<div className="notice" role="status">{message}</div>}
+  {data?.error&&<div className="notice" role="alert">PostgreSQL indisponible : {data.error}</div>}
+  <div className="cards"><article><small>Capital initial fictif</small><h2>{euro(data?.initial)}</h2></article><article><small>Liquidités paper</small><h2>{euro(data?.cash)}</h2></article><article><small>Valorisation indicative</small><h2>{euro(data?.equity)}</h2></article></div>
+  {tab===0?<section><h2>Trades du matin</h2><p className="muted">Détection prioritaire des entrées confirmées en phase 2 et, en anticipation, des bases de fin de phase 1. Une fin de phase 1 n'est pas un signal d'achat. Aucune opération n'est déclenchée automatiquement.</p><div className="table" style={{padding:16,marginBottom:16}}>
+    <h3>Univers de surveillance — actions françaises</h3>
+    <p className="muted">24 actions et deux benchmarks. Imports manuels disponibles par lots de six. Collecte quotidienne programmée en arrière-plan lorsque Docker fonctionne. Aucun compte de courtage. Les symboles ajoutés doivent être confirmés par les données Yahoo lors de leur premier import.</p>
+    <label>Lot à synchroniser
+      <select value={batchIndex} onChange={e=>setBatchIndex(Number(e.target.value))} style={{margin:10,padding:8}}>
+       {batches.map((b,i)=><option key={b.id} value={i}>{b.name} ({b.symbols.length} titres)</option>)}
+      </select>
+    </label>
+    <p className="muted">{batches[batchIndex]?.instruments.map(i=>i.name+' ('+i.symbol+')'+(i.bars?' · '+i.bars+' séances':' · À importer')).join(' · ')||'Chargement des lots...'}</p>
+    <button disabled={syncBusy||!batches[batchIndex]} onClick={()=>void syncYahoo()}>
+      {syncBusy?'Synchronisation en cours...':'Importer ce lot Yahoo'}
+    </button>
+    <button disabled={syncBusy||!batches.length} onClick={()=>void syncAllYahoo()} style={{marginLeft:10}}>
+      {syncBusy?'Import en cours…':'Importer tous les lots (manuel)'}
+    </button>
+    <p className="muted">Chaque import est atomique pour le lot sélectionné. Si un symbole échoue, aucune donnée de ce lot n'est écrite. Source Yahoo non officielle ; usage personnel et conditions du fournisseur à respecter.</p>
+   </div>
+   {marketStatus&&<div className="chart-panel">
+    <h3>Collecte automatique et historiques</h3>
+    <p>Instruments suivis : <strong>{marketStatus.coverage.instruments}</strong> · Historiques suffisants : <strong>{marketStatus.coverage.with_history}</strong> · Historiques à compléter : <strong>{marketStatus.coverage.needing_history}</strong> · Cours récents : <strong>{marketStatus.coverage.recent}</strong></p>
+    <p className="muted">Mise à jour Europe : 20 h 45 · USA : 23 h 15 (heure de Paris, jours ouvrés). Collecte active seulement lorsque Docker/WSL fonctionne.</p>
+    {marketStatus.jobs.length?<div className="table"><table><thead><tr><th>Dernier traitement</th><th>Date</th><th>État</th><th>Actions mises à jour</th><th>Échecs</th></tr></thead><tbody>
+     {marketStatus.jobs.slice(0,5).map((j,i)=><tr key={i}><td>{j.job_type}</td><td>{j.business_day}</td><td>{j.status}</td><td>{j.succeeded_symbols}</td><td>{j.failed_symbols}</td></tr>)}
+    </tbody></table></div>:<p className="muted">Aucun traitement planifié enregistré. Vérifier que le conteneur de collecte est démarré.</p>}
+   </div>}
+   <div className="chart-panel">
+    <div className="chart-toolbar">
+     <div><h3>Propositions d'achats fictifs — sélection quotidienne</h3>
+      <small>Uniquement cassures de phase 2 confirmées pendant la dernière semaine terminée. Cours affichés = dernière clôture enregistrée, pas un prix en direct.</small></div>
+     <button disabled={paperBusy||paperOrderBusy} onClick={()=>void loadPaperCandidates()}>{paperBusy?'Analyse en cours…':'Recalculer les candidats'}</button>
+    </div>
+    {paperError&&<div className="notice" role="alert">{paperError}</div>}
+    {paperCandidates&&<>
+     <p className="muted">Signal recherché : semaine du {paperCandidates.signalWeekExpected} · Benchmark : {paperCandidates.benchmarkDay??'absent'} · Liquidités PAPER : {euro(paperCandidates.cash)} · Positions : {paperCandidates.positionsOpen}/4</p>
+     <p><strong>{paperCandidates.eligibleCount===0?'Aucun achat admissible actuellement':paperCandidates.eligibleCount+' achat(s) admissible(s)'}</strong></p>
+     <div className="table"><table><thead><tr><th>Action</th><th>Signal</th><th>Dernière clôture</th><th>Stop théorique</th><th>Quantité</th><th>Risque estimé</th><th>Décision</th></tr></thead><tbody>
+      {paperCandidates.candidates.filter(x=>x.eligible).map(x=><tr key={x.symbol}>
+       <td><Link href={'/instrument/'+encodeURIComponent(x.symbol)}>{x.name} ({x.symbol})</Link></td>
+       <td>{x.signalWeek}</td><td>{x.quoteDay} · {euro(x.quotePrice)}</td><td>{euro(x.stop)}</td>
+       <td>{x.quantity}</td><td>{euro(x.maxPlannedLoss)}</td>
+       <td><button disabled={paperBusy||paperOrderBusy} onClick={()=>void buyPaper(x)}>Acheter fictivement</button></td>
+      </tr>)}
+      {paperCandidates.eligibleCount===0&&<tr><td colSpan={7}>Aucun achat : attendre une cassure confirmée ou corriger les données absentes.</td></tr>}
+     </tbody></table></div>
+     <details style={{marginTop:14}}><summary>Pourquoi certaines valeurs sont écartées ?</summary>
+      <div className="table"><table><thead><tr><th>Valeur</th><th>Motifs de refus</th></tr></thead><tbody>
+       {paperCandidates.candidates.filter(x=>!x.eligible).map(x=><tr key={x.symbol}>
+        <td>{x.symbol}</td><td>{x.reasons.join(' · ')||'—'}</td>
+       </tr>)}
+      </tbody></table></div>
+     </details>
+    </>}
+    <p className="muted">Une confirmation est obligatoire. Le prix fictif est basé sur une clôture connue et peut différer du prix d'ouverture suivant. Aucun courtier connecté ; le risque réel pourrait dépasser le stop en cas de gap.</p>
+   </div>
+   <div className="cards">
+    <article><small>Entrées phase 2 confirmées</small><h2>{scans.filter(s=>s.signal==='PHASE2_BREAKOUT'&&s.eligible).length}</h2></article>
+    <article><small>Fins de phase 1 à surveiller</small><h2>{scans.filter(s=>s.signal==='PHASE1_LATE').length}</h2></article>
+    <article><small>Formation d'une base</small><h2>{scans.filter(s=>s.signal==='PHASE1_BASE').length}</h2></article>
+   </div>
+   <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
+    <button className={screenView==='TOP'?'active':''} onClick={()=>setScreenView('TOP')}>Top 5 à surveiller ({topScans.length})</button>
+    <button className={screenView==='PHASE2'?'active':''} onClick={()=>setScreenView('PHASE2')}>Phase 2 confirmée / avancée ({scans.filter(s=>['PHASE2_BREAKOUT','PHASE2_EXTENDED'].includes(s.signal)).length})</button>
+    <button className={screenView==='PHASE1'?'active':''} onClick={()=>setScreenView('PHASE1')}>Bases de phase 1 ({scans.filter(s=>['PHASE1_LATE','PHASE1_BASE'].includes(s.signal)).length})</button>
+    <button className={screenView==='OTHER'?'active':''} onClick={()=>setScreenView('OTHER')}>Autres configurations ({scans.length-missingScans.length-scans.filter(s=>['PHASE2_BREAKOUT','PHASE2_EXTENDED','PHASE1_LATE','PHASE1_BASE'].includes(s.signal)).length})</button>
+    <button className={screenView==='MISSING'?'active':''} onClick={()=>setScreenView('MISSING')}>Données absentes / périmées ({missingScans.length})</button>
+   </div>
+   <div className="table"><table>
+    <thead><tr><th>Valeur</th><th>Dernier cours</th><th>MM30</th><th>Écart résistance</th><th>Pente MM30</th><th>Volume ×</th><th>Force relative</th><th>Veille / cassure provisoire</th><th>Score veille</th><th>Signal hebdo</th><th>Raisons / contrôles</th></tr></thead>
+    <tbody>
+     {visibleScans.length?visibleScans.map(s=><tr key={s.id}>
+      <td><Link className="instrument-link" href={'/instrument/'+encodeURIComponent(s.symbol)}>{s.name} ↗</Link><small>{s.symbol} · {s.last?.day??'Non importé'}</small></td>
+      <td>{euro(s.last?.close)}</td>
+      <td>{euro(s.ma30)}</td>
+      <td>{s.resistanceDistancePct==null?'—':s.resistanceDistancePct.toFixed(1)+' %'}</td>
+      <td>{s.maSlope6Pct==null?'—':s.maSlope6Pct.toFixed(1)+' %'}</td>
+      <td>{s.volumeRatio==null?'—':s.volumeRatio.toFixed(2)}</td>
+      <td>{s.relativeStrength==null?'—':s.relativeStrength.toFixed(1)+' %'}</td>
+      <td>{s.provisional?'CASSURE EN COURS — attente clôture hebdo':s.watchStatus==='NEAR_RESISTANCE'?'PROCHE RÉSISTANCE':s.watchStatus==='WATCH'?'SURVEILLANCE':'—'}
+      <small>{s.distanceToResistancePct==null?'':(s.distanceToResistancePct>=0?'Écart : ':'Dépassement : ')+Math.abs(s.distanceToResistancePct).toFixed(1)+' %'}</small></td>
+      <td>{s.watchScore==null?'—':s.watchScore+' / 100'}</td>
+      <td>{s.signal==='PHASE2_BREAKOUT'&&s.eligible?'PHASE 2 CONFIRMÉE':
+        s.signal==='PHASE2_EXTENDED'?'PHASE 2 TROP AVANCÉE':
+        s.signal==='PHASE1_LATE'?'FIN DE PHASE 1':
+        s.signal==='PHASE1_BASE'?'BASE EN FORMATION':s.signal}
+        <small>Score indicatif : {s.setupScore??0}/100</small></td>
+      <td style={{maxWidth:300}}>{s.reasons?.length?s.reasons.map((reason,i)=><small key={i}>• {reason}</small>):'—'}</td>
+     </tr>):<tr><td colSpan={11}>Aucun titre dans cette catégorie avec les données disponibles.</td></tr>}
+    </tbody></table></div>
+   <p className="muted">Classement indicatif sur semaines clôturées et benchmark de même devise. Le score de veille classe les configurations proches, sans représenter une probabilité ni autoriser un achat. Une cassure quotidienne en cours de semaine reste provisoire ; seule la clôture hebdomadaire peut confirmer la phase 2.</p>
+   </section>:tab===2?<section>
+    <h2>V4 · Backtesting portefeuille multi-actions</h2>
+    <p className="muted">Portefeuille fictif unique de 500 €, capital partagé entre les actions françaises importées. Signaux Weinstein hebdomadaires, entrée la semaine suivante, quatre positions maximum, frais et stops simulés. Aucune écriture en base et aucun ordre réel.</p>
+    <div className="chart-toolbar">
+     <strong>Durée maximale de détention</strong>
+     <div>{[4,8,12,26].map(weeks=><button key={weeks} className={portfolioHorizon===weeks?'active':''} onClick={()=>{setPortfolioHorizon(weeks);void loadPortfolioBacktest(weeks)}}>{weeks} sem.</button>)}</div>
+    </div>
+    {portfolioBusy?<p>Calcul en cours...</p>:portfolioBacktestError?<div className="notice" role="alert">{portfolioBacktestError}</div>:portfolioBacktest&&<>
+      <div className="cards">
+       <article><small>Équité finale simulée</small><h2>{euro(portfolioBacktest.finalEquity)}</h2></article>
+       <article><small>Performance fictive</small><h2>{portfolioBacktest.returnPct.toFixed(2)} %</h2></article>
+       <article><small>Recul maximal simulé</small><h2>{portfolioBacktest.maxDrawdownPct.toFixed(2)} %</h2></article>
+       <article><small>Positions clôturées</small><h2>{portfolioBacktest.tradeCount}</h2></article>
+       <article><small>Taux de transactions gagnantes</small><h2>{portfolioBacktest.winRatePct==null?'—':portfolioBacktest.winRatePct.toFixed(1)+' %'}</h2></article>
+       <article><small>Actions analysées</small><h2>{portfolioBacktest.symbolsAnalyzed}</h2></article>
+      </div>
+      <h3>Comparaison de trois périodes chronologiques</h3>
+      <p className="muted">Découpage fixe 60 % / 20 % / 20 % du calendrier, sans réglage des paramètres : indicateurs descriptifs, pas validation statistique hors échantillon.</p>
+      <div className="table"><table><thead><tr><th>Période</th><th>Du</th><th>Au</th><th>Semaines</th><th>Performance</th><th>Sorties</th></tr></thead>
+      <tbody>{portfolioBacktest.periods.map(p=><tr key={p.name}>
+       <td>{p.name==='EARLY_60'?'Premiers 60 %':p.name==='MIDDLE_20'?'20 % intermédiaires':'Derniers 20 %'}</td><td>{p.from??'—'}</td><td>{p.to??'—'}</td><td>{p.weeks}</td><td>{p.returnPct==null?'—':p.returnPct.toFixed(2)+' %'}</td><td>{p.trades}</td>
+      </tr>)}</tbody></table></div>
+      <h3>Évolution chronologique de l'équité fictive</h3>
+      <div className="table"><table><thead><tr><th>Semaine</th><th>Liquidités</th><th>Équité estimée</th><th>Positions ouvertes</th></tr></thead><tbody>
+       {portfolioBacktest.equityCurve.slice(-20).reverse().map(x=><tr key={x.week}><td>{x.week}</td><td>{euro(x.cash)}</td><td>{euro(x.equity)}</td><td>{x.openPositions}</td></tr>)}
+      </tbody></table></div>
+      <h3>Transactions fictives terminées</h3>
+      <div className="table"><table><thead><tr><th>Action</th><th>Signal</th><th>Entrée</th><th>Sortie</th><th>Quantité</th><th>Résultat</th><th>Motif</th></tr></thead><tbody>
+       {portfolioBacktest.trades.length?portfolioBacktest.trades.slice(-30).reverse().map((x,i)=><tr key={x.symbol+'-'+x.entryWeek+'-'+i}><td><Link href={'/instrument/'+encodeURIComponent(x.symbol)}>{x.symbol}</Link></td><td>{x.signalWeek}</td><td>{x.entryWeek}</td><td>{x.exitWeek}</td><td>{x.quantity}</td><td>{euro(x.pnl)}</td><td>{x.exitReason}</td></tr>):
+        <tr><td colSpan={7}>Aucune transaction admissible avec ce capital et ces règles.</td></tr>}
+      </tbody></table></div>
+      <p className="muted">Signaux ignorés : {portfolioBacktest.skipped.length}. Positions théoriques encore ouvertes : {portfolioBacktest.positionsOpen.join(', ')||'aucune'}.</p>
+      <p className="muted">Limites : univers actuel soumis au biais de survivance, cours Yahoo non corrigés indépendamment des splits/dividendes, hypothèses simplifiées de prix d'exécution et d'ordre intrase semaine, aucun impôt ni change historique. Simulation non prédictive.</p>
+    </>}
+  </section>:
+  <section><h2>Portefeuille</h2>
+  <div className="table"><table><thead><tr><th>Valeur</th><th>Quantité</th><th>PRU</th><th>Cours</th><th>Stop</th><th>Signal</th><th>Action</th></tr></thead><tbody>{data?.positions.length?data.positions.map(p=><tr key={p.id}><td>{p.name}<small>{p.symbol}</small></td><td>{p.qty}</td><td>{euro(p.avg)}</td><td>{euro(p.last)}</td><td>{euro(p.stop)}</td><td>{p.alert}</td><td><button disabled={p.last==null} onClick={()=>void order(p,'SELL')}>Vendre paper</button></td></tr>):<tr><td colSpan={7}>Aucune position ouverte</td></tr>}</tbody></table></div>
+  <h2>Historique paper</h2><div className="table"><table><thead><tr><th>Date</th><th>Instrument</th><th>Opération</th><th>Quantité</th><th>Prix</th></tr></thead><tbody>{data?.orders.map(o=><tr key={o.id}><td>{new Date(o.created_at).toLocaleString('fr-FR')}</td><td>{o.symbol}</td><td>{o.side}</td><td>{o.qty}</td><td>{euro(Number(o.price))}</td></tr>)}</tbody></table></div></section>}
+ </main>;
+}
