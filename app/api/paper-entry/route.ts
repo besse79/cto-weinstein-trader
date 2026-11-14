@@ -1,6 +1,6 @@
 import {NextRequest} from 'next/server';
 import {authorized} from '../../../lib/auth';
-import {computeCandidates} from '../paper-candidates/route';
+import {computeCandidates} from '../../../lib/paper-candidates';
 import {POST as order} from '../orders/route';
 
 /** Execute PAPER only. Re-screen every attempt; never trust client-provided
