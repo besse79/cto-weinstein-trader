@@ -168,6 +168,9 @@ jobs:
       - name: Verify paper dashboard
         run: |
           curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
+      - name: Verify empty index-universe status without imported licensed snapshots
+        run: |
+          curl -fsS http://127.0.0.1:3010/api/market/universe-coverage | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="NOT_IMPORTED" and d["indices"]==[]'
       - name: Run installer again to produce verified PostgreSQL backup
         run: python3 deploy_local.py
       - name: Verify 26-instrument universe added idempotently
