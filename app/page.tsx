@@ -131,7 +131,7 @@ export default function Home(){
   <div className="cards"><article><small>Capital initial fictif</small><h2>{euro(data?.initial)}</h2></article><article><small>Liquidités paper</small><h2>{euro(data?.cash)}</h2></article><article><small>Valorisation indicative</small><h2>{euro(data?.equity)}</h2></article></div>
   {tab===0?<section><h2>Trades du matin</h2><p className="muted">Détection prioritaire des entrées confirmées en phase 2 et, en anticipation, des bases de fin de phase 1. Une fin de phase 1 n'est pas un signal d'achat. Aucune opération n'est déclenchée automatiquement.</p><div className="table" style={{padding:16,marginBottom:16}}>
     <h3>Univers de surveillance — actions françaises</h3>
-    <p className="muted">24 actions et deux benchmarks. Imports manuels disponibles par lots de six. Collecte quotidienne programmée en arrière-plan lorsque Docker fonctionne. Aucun compte de courtage. Les symboles ajoutés doivent être confirmés par les données Yahoo lors de leur premier import.</p>
+    <p className="muted">24 actions et deux benchmarks. Imports manuels disponibles par lots de six. Collecte quotidienne programmée en arrière-plan lorsque Docker fonctionne. Analyse de la semaine clôturée le vendredi consultable le samedi et le dimanche après synchronisation des cours. Aucun compte de courtage. Les symboles ajoutés doivent être confirmés par les données Yahoo lors de leur premier import.</p>
     <label>Lot à synchroniser
       <select value={batchIndex} onChange={e=>setBatchIndex(Number(e.target.value))} style={{margin:10,padding:8}}>
        {batches.map((b,i)=><option key={b.id} value={i}>{b.name} ({b.symbols.length} titres)</option>)}
@@ -149,7 +149,7 @@ export default function Home(){
    {marketStatus&&<div className="chart-panel">
     <h3>Collecte automatique et historiques</h3>
     <p>Instruments suivis : <strong>{marketStatus.coverage.instruments}</strong> · Historiques suffisants : <strong>{marketStatus.coverage.with_history}</strong> · Historiques à compléter : <strong>{marketStatus.coverage.needing_history}</strong> · Cours récents : <strong>{marketStatus.coverage.recent}</strong></p>
-    <p className="muted">Mise à jour Europe : 20 h 45 · USA : 23 h 15 (heure de Paris, jours ouvrés). Collecte active seulement lorsque Docker/WSL fonctionne.</p>
+    <p className="muted">Mise à jour Europe : 20 h 45 · USA : 23 h 45 (heure de Paris, jours ouvrés). Collecte active seulement lorsque Docker/WSL fonctionne.</p>
     {marketStatus.jobs.length?<div className="table"><table><thead><tr><th>Dernier traitement</th><th>Date</th><th>État</th><th>Actions mises à jour</th><th>Échecs</th></tr></thead><tbody>
      {marketStatus.jobs.slice(0,5).map((j,i)=><tr key={i}><td>{j.job_type}</td><td>{j.business_day}</td><td>{j.status}</td><td>{j.succeeded_symbols}</td><td>{j.failed_symbols}</td></tr>)}
     </tbody></table></div>:<p className="muted">Aucun traitement planifié enregistré. Vérifier que le conteneur de collecte est démarré.</p>}
