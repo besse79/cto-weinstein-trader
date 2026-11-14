@@ -10,7 +10,7 @@ const avg=xs=>xs.reduce((a,b)=>a+b,0)/xs.length;
  * Any missing Friday bar is checked separately by the paper-entry safeguards.
  */
 export function completedWeekCutoff(asOf){
- if(typeof asOf!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(asOf))
+ if(typeof asOf!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(asOf))
   throw Error('Invalid asOf');
  const day=new Date(asOf+'T12:00:00Z');
  if(!Number.isFinite(+day)||day.toISOString().slice(0,10)!==asOf)
