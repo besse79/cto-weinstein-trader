@@ -29,7 +29,7 @@ Pour importer : sélectionner un lot dans « Trades du matin » puis cliquer dir
 ### Fiabilité et restrictions
 
 - L'endpoint Yahoo Chart est **non officiel**, gratuit dans les conditions où il est accessible, sans garantie ni contrat de service. Yahoo peut renvoyer 401/429, interrompre ou modifier son format.
-- Les conditions générales Yahoo restreignent l'accès automatisé aux données sans autorisation préalable. Il revient à l'utilisateur de vérifier ses droits d'utilisation ; aucun contournement de contrôles, rotation de proxy ou scraping intensif n'est fourni. **L'import est manuel et non planifié.**
+- Les conditions générales Yahoo restreignent l'accès automatisé aux données sans autorisation préalable. Il revient à l'utilisateur de vérifier ses droits d'utilisation ; aucun contournement de contrôles, rotation de proxy ou scraping intensif n'est fourni. **L'import manuel reste possible ; un collecteur quotidien facultatif est désormais lancé par le déploiement local via Docker (voir la section « Collecte quotidienne automatisée »).**
 - Une synchronisation de groupe est **atomique** : si un instrument, une devise, une cotation ou une connexion ne passe pas les contrôles, rien n'est écrit. Les métadonnées d'import sont enregistrées dans `market_sync_audit`.
 - Vérification du symbole, de la devise, des dates et des volumes, de la cohérence haut/bas/ouverture/clôture ; exclusion des séances en cours et rejet des historiques périmés de plus de dix jours. Ce contrôle ne garantit pas la justesse économique des cotations.
 - Les données Yahoo ne constituent pas un flux d'exécution de courtier. Les dividendes, ajustements de splits et frais doivent être validés avant un backtest de performance sérieux.
@@ -79,7 +79,7 @@ La migration SQL `003_french_large_caps.sql` ajoute 20 sociétés cotées à Par
 
 - `GET /api/universe` affiche les instruments déjà enregistrés, le nombre de bougies et la date du dernier cours, groupés en lots de six maximum.
 - Dans l'interface, l'utilisateur sélectionne **un lot**, puis déclenche explicitement son import Yahoo. L'ancien appel `{ "all": true }` reste compatible mais importe **uniquement les six instruments initiaux**. Les nouveaux appels utilisent `{ "symbols": ["AI.PA", "AIR.PA"] }` avec de un à six symboles distincts présents en base.
-- Chaque lot est atomique : symbole, devise ou prix invalide => aucune bougie de ce lot n'est écrite. Aucun contournement des restrictions Yahoo, aucun ordonnanceur et aucun transfert d'ordre.
+- Chaque lot est atomique : symbole, devise ou prix invalide => aucune bougie de ce lot n'est écrite. Aucun contournement des restrictions Yahoo et aucun transfert d'ordre ; un collecteur de clôtures quotidien borné est décrit plus bas.
 - Le scanner comporte trois listes : **cassures de phase 2**, **bases de fin de phase 1**, **rejets / données absentes**. Chaque rejet décrit les critères manquants.
 - Une cassure confirmée mais située à plus de **20 % au-dessus de la MM30** est classée `PHASE2_EXTENDED`, et n'est **pas éligible** au signal d'entrée initial. Ce seuil conservateur est heuristique et doit être backtesté.
 - Les titres qui ne sont pas encore importés restent `NO_DATA` et ne peuvent pas générer d'achats.
@@ -99,7 +99,7 @@ Le statut `PROVISIONAL_BREAKOUT` apparaît uniquement si un **cours quotidien cl
 
 La page du scanner s'ouvre sur les **cinq meilleures configurations disposant de données fraîches** (tri par score de veille). Des onglets séparent les entrées phase 2, bases de phase 1, autres profils et **données absentes/périmées**. Aucune valeur sans historique suffisant ou benchmark valable n'obtient de score de veille.
 
-La fiche détaillée peut afficher une marque distincte du dernier cours quotidien et de la résistance de veille, **sans incorporer cette séance à la courbe des semaines closes**. La cotation n'est pas garantie comme temps réel : elle dépend du dernier import Yahoo manuel. Aucune collecte automatique, aucun ordre réel, capital paper 500 EUR conservé.
+La fiche détaillée peut afficher une marque distincte du dernier cours quotidien et de la résistance de veille, **sans incorporer cette séance à la courbe des semaines closes**. La cotation n'est pas garantie comme temps réel : elle dépend du dernier import Yahoo, manuel ou programmé. Collecte EOD quotidienne disponible lorsque Docker fonctionne, aucun ordre réel, capital paper 500 EUR conservé.
 
 ## V3 — Reconstitution historique des phases Weinstein
 
@@ -176,3 +176,27 @@ Un utilisateur peut sélectionner un lot ou déclencher **l'import manuel de tou
 En l'absence d'un candidat valable, aucun ordre n'est créé. L'API `GET /api/paper-candidates` est en lecture seule. `POST /api/paper-entry` est authentifié côté serveur et `POST /api/local-actions` n'expose qu'une action `buy` locale avec revalidation complète et protection Origin. Aucune route d'achat réel ni connexion courtier n'existe.
 
 **Lundi :** lancer l'application, importer les lots Yahoo nécessaires, actualiser l'analyse et valider éventuellement une transaction fictive. La collecte reste manuelle et la recette WSL sur les cours réels n'est pas attestée par la CI, qui utilise des données Yahoo simulées.
+
+## Collecte quotidienne automatisée — stockage PostgreSQL
+
+Le conteneur Docker `scheduler` est installé automatiquement par `deploy_local.py` **sur WSL local**, après la sauvegarde vérifiée de la base, la migration idempotente `004_market_collection.sql` et le démarrage de l'application. Aucun cron système ni `APP_TOKEN` à saisir. Le collecteur n'est **pas** lancé dans GitHub Actions ni dans les commandes Docker sans le profil `automation`.
+
+Fonctionnement :
+- **Démarrage** : lecture du référentiel PostgreSQL, récupération progressive des historiques manquants/insuffisants (moins de 250 séances) sur une fenêtre de cinq ans, et rattrapage des titres dont la dernière séance est ancienne. Sans réimporter ceux déjà complets et récents.
+- **Lundi à vendredi 20 h 45, heure de Paris** : mise à jour des actions EUR et benchmark `EXSA.DE`.
+- **Lundi à vendredi 23 h 15, heure de Paris** : mise à jour du benchmark US `SPY` et des futurs titres USD enregistrés.
+- **Incrémental** : fenêtre glissante de trois mois pour les titres ayant déjà un historique de 250 séances ou plus, insertion/mise à jour sans doublons dans `candles`. Un premier import utilise cinq ans ; les prix déjà acquis restent conservés.
+- **Protection des appels** : lots de six au maximum, un seul collecteur à la fois (verrou PostgreSQL), maximum 120 symboles par exécution et rotation des valeurs secondaires si un univers futur dépasse cette limite ; jamais de requêtes à fréquence intraday. Jusqu'à trois essais espacés d'une heure pour un traitement en échec.
+- **Traçabilité** : `market_job_runs` conserve les dates, états, nombres de réussites/échecs et erreurs ; l'interface « Trades du matin » montre la couverture et les cinq derniers traitements.
+- **Robustesse** : chaque lot est atomique, un lot échoué n'efface jamais les historiques précédents. Les erreurs et rejets de qualité sont visibles. Les autres lots peuvent être traités, sauf limitation explicite par le fournisseur.
+
+**Attention :** la collecte utilise ici l'adaptateur Yahoo Finance gratuit déjà présent, **non officiel**, sans SLA ni garantie de droit de collecte automatisée. Le fonctionnement doit rester conforme aux conditions applicables au compte et aux données ; désactiver le conteneur si le fournisseur interdit cet usage ou renvoie un refus. Une API FMP gratuite peut être intégrée ultérieurement après vérification des instruments et de la licence, sans changement du stockage. La collecte quotidienne n'est pas une autorisation de trading et n'exécute **aucun** achat ou vente.
+
+**Disponibilité** : Docker Desktop et WSL doivent être démarrés aux heures prévues. Le conteneur redémarre automatiquement avec Docker ; si le poste était éteint, il tente de rattraper les historiques absents ou périmés lors de son retour, mais ne promet pas des données non disponibles chez la source.
+
+**Commandes de diagnostic (optionnelles)** :
+```bash
+docker compose -p cto_weinstein --profile automation ps
+docker compose -p cto_weinstein --profile automation logs --tail=80 scheduler
+```
+Arrêt volontaire : `docker compose -p cto_weinstein --profile automation stop scheduler`. Un redéploiement normal réactive la collecte. L'API de statut en lecture seule est `GET /api/market/collection-status`.

@@ -62,3 +62,11 @@ test('invalid screening arguments fail closed',()=>{
  assert.throws(()=>screenPaperCandidates(scan([make()]),{cash:NaN,positions:[]},
   {asOf:monday,benchmarkDay:friday}),/Invalid/);
 });
+
+test('Monday cannot purchase a breakout formed from partial prior-week Thursday candles',()=>{
+ const incomplete=run([make('AC.PA',{last:{day:'2026-11-12',close:100}})],
+  {benchmarkDay:'2026-11-12'});
+ assert.equal(incomplete.eligibleCount,0);
+ assert.ok(incomplete.candidates[0].reasons.includes('PREVIOUS_WEEK_QUOTE_INCOMPLETE'));
+ assert.ok(incomplete.candidates[0].reasons.includes('PREVIOUS_WEEK_BENCHMARK_INCOMPLETE'));
+});
