@@ -66,6 +66,48 @@ class ExsaHoldingsTests(unittest.TestCase):
         self.assertEqual(exchange_suffix("NASDAQ OMX COPENHAGEN","DKK"),".CO")
         self.assertIsNone(exchange_suffix("UNKNOWN","EUR"))
 
+    def test_real_blackrock_market_aliases_have_unambiguous_yahoo_suffixes(self):
+        examples=[
+            ("Omx Nordic Exchange Copenhagen A/S","DKK",".CO"),
+            ("Omx Nordic Exchange Stockholm AB","SEK",".ST"),
+            ("Omx Nordic Exchange Helsinki Oy","EUR",".HE"),
+            ("Wiener Boer","EUR",".VI"),
+            ("Wiener Boerse Ag","EUR",".VI"),
+            ("Nasdaq OMX Copenhagen A/S","DKK",".CO"),
+            ("Oslo Boers ASA","NOK",".OL")
+        ]
+        for place,currency,suffix in examples:
+            with self.subTest(place=place):
+                self.assertEqual(exchange_suffix(place,currency),suffix)
+        self.assertIsNone(exchange_suffix("Unverified Arbitrary Exchange","EUR"))
+
+    def test_49_legacy_nordic_and_vienna_listings_normalize_without_loss(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/"realish.csv"
+            with path.open("w",newline="",encoding="utf-8") as fp:
+                w=csv.writer(fp)
+                w.writerow(["Fund Holdings as of",date.today().isoformat()])
+                w.writerow(["Ticker","Name","Asset Class","Market Currency","Exchange"])
+                for i in range(600):
+                    ticker=f"EXSA{i:03d}"
+                    currency="EUR";market="Euronext Paris"
+                    if i<24:
+                        currency="DKK";market="Omx Nordic Exchange Copenhagen A/S"
+                        if i==0:ticker="NOVO B"
+                    elif i<44:
+                        currency="SEK";market="Omx Nordic Exchange Stockholm AB"
+                    elif i<49:
+                        currency="EUR";market="Wiener Boerse Ag"
+                        if i==44:ticker="EBS"
+                    w.writerow([ticker,f"Sample {i}","Equity",currency,market])
+            result=Path(d)/"normalized.csv"
+            report=convert(path,result,date.today().isoformat())
+            self.assertEqual(report["holdings"],600)
+            symbols={row[1] for row in parse_csv(result)}
+            self.assertIn("NOVO-B.CO",symbols)
+            self.assertIn("EBS.VI",symbols)
+            self.assertEqual(len(symbols),600)
+
     def test_one_shot_official_domain_download_mock(self):
         with tempfile.TemporaryDirectory() as d:
             src=self.fixture(d)
