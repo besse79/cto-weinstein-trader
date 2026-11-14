@@ -131,7 +131,7 @@ export default function Home(){
   <div className="cards"><article><small>Capital initial fictif</small><h2>{euro(data?.initial)}</h2></article><article><small>Liquidités paper</small><h2>{euro(data?.cash)}</h2></article><article><small>Valorisation indicative</small><h2>{euro(data?.equity)}</h2></article></div>
   {tab===0?<section><h2>Trades du matin</h2><p className="muted">Détection prioritaire des entrées confirmées en phase 2 et, en anticipation, des bases de fin de phase 1. Une fin de phase 1 n'est pas un signal d'achat. Aucune opération n'est déclenchée automatiquement.</p><div className="table" style={{padding:16,marginBottom:16}}>
     <h3>Univers de surveillance — actions françaises</h3>
-    <p className="muted">24 actions et deux benchmarks. Synchronisation Yahoo manuelle en lots de six maximum, sans planificateur ni compte de courtage. Les symboles ajoutés doivent être confirmés par les données Yahoo lors de leur premier import.</p>
+    <p className="muted">24 actions et deux benchmarks. Imports manuels disponibles par lots de six. Collecte quotidienne programmée en arrière-plan lorsque Docker fonctionne. Aucun compte de courtage. Les symboles ajoutés doivent être confirmés par les données Yahoo lors de leur premier import.</p>
     <label>Lot à synchroniser
       <select value={batchIndex} onChange={e=>setBatchIndex(Number(e.target.value))} style={{margin:10,padding:8}}>
        {batches.map((b,i)=><option key={b.id} value={i}>{b.name} ({b.symbols.length} titres)</option>)}
