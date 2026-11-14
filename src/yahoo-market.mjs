@@ -64,7 +64,7 @@ export function isDailySessionClosed(now,zone){
  return Number(parts.hour)*60+Number(parts.minute)>=threshold;
 }
 
-export function parseYahooChart(json,{symbol,currency,asOf=new Date()}){
+export function parseYahooChart(json,{symbol,currency,asOf=new Date(),historicalYear=null}){
  const item=json?.chart?.result?.[0];
  if(json?.chart?.error||!item||!Array.isArray(json.chart.result)||json.chart.result.length!==1)
   throw new Error('Yahoo Finance chart unavailable');
@@ -80,7 +80,7 @@ export function parseYahooChart(json,{symbol,currency,asOf=new Date()}){
  if(typeof zone!=='string'||zone.length>70)throw new Error('Missing exchange timezone');
  try{new Intl.DateTimeFormat('en-US',{timeZone:zone})}catch{throw new Error('Invalid exchange timezone')}
  const quotes=item.indicators?.quote?.[0],ts=item.timestamp;
- if(!quotes||!Array.isArray(ts)||ts.length<40||ts.length>3500)
+ if(!quotes||!Array.isArray(ts)||ts.length<(historicalYear===null?40:1)||ts.length>3500)
   throw new Error('Yahoo history is insufficient or malformed');
  for(const k of ['open','high','low','close','volume'])
   if(!Array.isArray(quotes[k])||quotes[k].length!==ts.length)throw new Error('Incomplete OHLCV columns');
@@ -104,10 +104,14 @@ export function parseYahooChart(json,{symbol,currency,asOf=new Date()}){
   bars.push({day,open:open*factor,high:high*factor,low:low*factor,close:close*factor,volume});
  }
  bars.sort((a,b)=>a.day.localeCompare(b.day));
- if(bars.length<40)throw new Error('Insufficient completed history');
+ if(bars.length<(historicalYear===null?40:1))throw new Error('Insufficient completed history');
+ if(historicalYear!==null){
+  if(!Number.isInteger(historicalYear)||historicalYear<1990||historicalYear>now.getUTCFullYear())throw new Error('Invalid historical year');
+  if(bars.some(b=>Number(b.day.slice(0,4))!==historicalYear))throw new Error('Out-of-window Yahoo candle');
+ }
  const latest=bars.at(-1).day;
  const lag=(now-Date.parse(latest+'T12:00:00Z'))/86400000;
- if(lag>10||lag<0)throw new Error('Yahoo last candle is stale or future dated');
+ if((historicalYear===null&&lag>10)||lag<0)throw new Error('Yahoo last candle is stale or future dated');
  return {bars,symbol,currency,first:bars[0].day,last:latest,
    provider:YAHOO_PROVIDER,adjustment:quotedPence?
     'Converted London GBp/GBX OHLC to GBP at 0.01; split/dividend adjustment unverified':
