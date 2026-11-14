@@ -36,8 +36,9 @@ class IndexImportTests(unittest.TestCase):
     def test_sql_literal_escaped(self):
         sql=statement(parse_csv(self.write([["STOXX600","AI.PA","L'Oreal","EUR"]])),
                       "2026-11-14","Source's file")
-        self.assertIn("L''Oreal",sql)
-        self.assertIn("Source''s file",sql)
+        self.assertIn("4c274f7265616c",sql)
+        self.assertIn("536f7572636527732066696c65",sql)
+        self.assertNotIn("L'Oreal",sql)
 
     def test_duplicate_refused(self):
         file=self.write([["SP500","AAPL","Apple","USD"],["SP500","AAPL","Apple","USD"]])
