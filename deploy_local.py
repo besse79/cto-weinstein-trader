@@ -101,6 +101,8 @@ def main():
         if args.check: return 0
         ensure_env()
         docker("config","--quiet")
+        # Pause collection before snapshots and migrations.
+        docker("--profile","automation","stop","scheduler")
         backup()
         # Persisted PostgreSQL volumes do not replay docker-entrypoint-initdb.d.
         # Always take a verified source + database backup BEFORE migrations.
@@ -108,6 +110,7 @@ def main():
         for number, filename in [
             ("002", "002_currency_benchmarks.sql"),
             ("003", "003_french_large_caps.sql"),
+            ("004", "004_market_collection.sql"),
         ]:
             migration = ROOT / "sql/migrations" / filename
             if not migration.is_file():
@@ -115,7 +118,7 @@ def main():
             docker("exec","-T","db","psql","-v","ON_ERROR_STOP=1",
                    "-U","trader","-d","trader",input_data=migration.read_bytes())
             print("Idempotent schema migration " + number + ": OK")
-        # Import Yahoo only via an authenticated, explicit user action. No scheduled import.
+        # Start automated collection only after backup, migration and HTTP readiness.
         docker("up","-d","--wait","web")
         url=f"http://127.0.0.1:{PORT}/api/dashboard"
         import time
@@ -126,6 +129,11 @@ def main():
                     body=json.load(response)
                     if response.status==200 and body.get("mode")=="PAPER":
                         print(f"READY: http://localhost:{PORT}  | paper capital: {body.get('initial')} EUR")
+                        if os.environ.get("GITHUB_ACTIONS") != "true":
+                            docker("--profile","automation","up","-d","scheduler")
+                            print("AUTOMATION: active; Europe/Paris 20:45 EUR, 23:15 USA")
+                        else:
+                            print("AUTOMATION: not started inside GitHub CI")
                         return 0
             except Exception: pass
             time.sleep(2)
