@@ -13,6 +13,8 @@ from datetime import date,datetime
 from pathlib import Path
 import re
 import sys
+import unicodedata
+from collections import Counter
 from import_index_universe import parse_csv
 
 SUFFIXES={
@@ -28,6 +30,23 @@ SUFFIXES={
     "NASDAQ HELSINKI":".HE","OSLO BORS ASA":".OL",
     "OSLO BORS":".OL","WARSAW STOCK EXCHANGE":".WA",
     "VIENNA STOCK EXCHANGE":".VI",
+    # iShares actual exchange identifiers; don't infer from currency alone.
+    "OMX NORDIC EXCHANGE COPENHAGEN A S":".CO",
+    "OMX NORDIC EXCHANGE STOCKHOLM AB":".ST",
+    "OMX NORDIC EXCHANGE HELSINKI OY":".HE",
+    "NASDAQ OMX COPENHAGEN A S":".CO",
+    "NASDAQ OMX STOCKHOLM AB":".ST",
+    "NASDAQ OMX HELSINKI OY":".HE",
+    "OMX NORDIC EXCHANGE COPENHAGEN":".CO",
+    "OMX NORDIC EXCHANGE STOCKHOLM":".ST",
+    "OMX NORDIC EXCHANGE HELSINKI":".HE",
+    "WIENER BOERSE":".VI",
+    "WIENER BOER":".VI",
+    "VIENNA BOERSE":".VI",
+    "DEUTSCHE BOERSE AG":".DE",
+    "OSLO BOERS":".OL",
+    "OSLO BOERS ASA":".OL",
+    "OMX NORDIC EXCHANGE OSLO":".OL",
 }
 CURRENCY_SUFFIX={"SEK":".ST","DKK":".CO","NOK":".OL","PLN":".WA"}
 MONTHS={
@@ -64,12 +83,18 @@ def snapshot_date(prefix):
 def pick(fieldnames,options):
     return next((f for f in fieldnames if f.strip().upper() in options),None)
 
+def normalize_exchange(value):
+    text=unicodedata.normalize("NFKD",value).encode("ascii","ignore").decode("ascii")
+    return " ".join(re.sub(r"[^A-Z0-9 ]"," ",text.upper()).split())
+
 def exchange_suffix(value,currency):
-    x=re.sub(r"[^A-Z0-9 ]"," ",value.upper())
-    x=" ".join(x.split())
+    x=normalize_exchange(value)
     for key,suffix in SUFFIXES.items():
-        clean=re.sub(r"[^A-Z0-9 ]"," ",key)
-        if clean in x:return suffix
+        clean=normalize_exchange(key)
+        if x==clean or x.startswith(clean+" ") or x.endswith(" "+clean):
+            return suffix
+    # Only when the exchange explicitly says Nordic *without* a country
+    # do we use the already verified Nordic currency. No EUR/GBP guessing.
     return CURRENCY_SUFFIX.get(currency) if x in {"NASDAQ OMX NORDIC","NASDAQ NORDIC"} else None
 
 def transform(raw,expected_day):
@@ -122,8 +147,11 @@ def transform(raw,expected_day):
         seen.add(symbol)
         rows.append(("STOXX600_ETF_PROXY",symbol,name,currency))
     if unknown:
-        samples=", ".join(f"{a}:{b}" for a,b in unknown[:12])
-        raise ValueError(f"Unresolved ETF equity listings {len(unknown)}; {samples}")
+        counts=Counter(reason for _,reason in unknown)
+        summary="; ".join(f"{reason} ({count})" for reason,count in counts.most_common())
+        examples=", ".join(f"{a}:{b}" for a,b in unknown[:20])
+        raise ValueError(f"Unresolved ETF equity listings {len(unknown)}; "
+                         f"exchange/currency categories: {summary}; examples: {examples}")
     if not 570<=len(rows)<=640:
         raise ValueError(f"ETF equity holdings outside plausible count: {len(rows)}, non-equities: {non_equities}")
     return sorted(rows,key=lambda r:r[1]),{"snapshot_day":published.isoformat(),
