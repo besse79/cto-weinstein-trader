@@ -18,7 +18,12 @@ export function screenPaperCandidates(scanner,dashboard,{
  if(!parseDay(asOf)||!Array.isArray(scanner?.results)||
   !Number.isFinite(dashboard?.cash)||!Number.isFinite(dashboard?.equity)||
   !Number.isFinite(fee)||fee<0)throw Error('Invalid paper screening input');
- const previousMonday=new Date(Date.parse(weeksMonday(asOf)+'T12:00:00Z')-7*86400000)
+ // A completed Friday can be screened immediately on Saturday/Sunday.
+ // On Mon-Fri, use the prior calendar week; the current week is still open
+ // to avoid trading on partial Friday data. This preserves Monday entries.
+ const weekday=new Date(asOf+'T12:00:00Z').getUTCDay();
+ const completedMondayOffset=(weekday===0||weekday===6)?0:7;
+ const previousMonday=new Date(Date.parse(weeksMonday(asOf)+'T12:00:00Z')-completedMondayOffset*86400000)
   .toISOString().slice(0,10);
  const age=day=>parseDay(day)?(Date.parse(asOf+'T12:00:00Z')-Date.parse(day+'T12:00:00Z'))/86400000:Infinity;
  // Without a verified prior Friday candle, the prior ISO week may only
