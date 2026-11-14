@@ -69,7 +69,12 @@ export function parseYahooChart(json,{symbol,currency,asOf=new Date()}){
  if(json?.chart?.error||!item||!Array.isArray(json.chart.result)||json.chart.result.length!==1)
   throw new Error('Yahoo Finance chart unavailable');
  const meta=item.meta||{};
- if(meta.symbol!==symbol || meta.currency!==currency)
+ // London listings may be quoted in pence (GBp/GBX) even though holdings
+ // are denominated in GBP. Convert OHLC to GBP, keep volume in shares.
+ // Never infer a currency mismatch for other venues or instruments.
+ const quotedPence=symbol.endsWith('.L')&&currency==='GBP'&&
+   ['GBp','GBX'].includes(meta.currency);
+ if(meta.symbol!==symbol || (!quotedPence&&meta.currency!==currency))
   throw new Error('Yahoo ticker/currency mismatch; import blocked');
  const zone=meta.exchangeTimezoneName;
  if(typeof zone!=='string'||zone.length>70)throw new Error('Missing exchange timezone');
@@ -95,7 +100,8 @@ export function parseYahooChart(json,{symbol,currency,asOf=new Date()}){
   if(![open,high,low,close].every(v=>typeof v==='number'&&Number.isFinite(v)&&v>0) ||
      high<Math.max(open,low,close)||low>Math.min(open,close) ||
      !Number.isSafeInteger(volume)||volume<0)throw new Error('Invalid Yahoo OHLCV; import blocked');
-  bars.push({day,open,high,low,close,volume});
+  const factor=quotedPence?0.01:1;
+  bars.push({day,open:open*factor,high:high*factor,low:low*factor,close:close*factor,volume});
  }
  bars.sort((a,b)=>a.day.localeCompare(b.day));
  if(bars.length<40)throw new Error('Insufficient completed history');
@@ -103,5 +109,7 @@ export function parseYahooChart(json,{symbol,currency,asOf=new Date()}){
  const lag=(now-Date.parse(latest+'T12:00:00Z'))/86400000;
  if(lag>10||lag<0)throw new Error('Yahoo last candle is stale or future dated');
  return {bars,symbol,currency,first:bars[0].day,last:latest,
-   provider:YAHOO_PROVIDER,adjustment:'Yahoo chart OHLCV (dividend adjustment not independently verified)'};
+   provider:YAHOO_PROVIDER,adjustment:quotedPence?
+    'Converted London GBp/GBX OHLC to GBP at 0.01; split/dividend adjustment unverified':
+    'Yahoo chart OHLCV (dividend adjustment not independently verified)'};
 }
