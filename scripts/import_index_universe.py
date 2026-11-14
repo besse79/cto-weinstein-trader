@@ -74,7 +74,7 @@ def statement(rows, observed_on, source):
           END IF;
         END $$;""")
         sql.append(f"""INSERT INTO index_constituent_observations(index_code,instrument_id,observed_on,source_label)
-        SELECT {quote(index_code)},id,{quote(observed_on)},{quote(source)}
+        SELECT {quote(index_code)},id,({quote(observed_on)})::date,{quote(source)}
         FROM instruments WHERE symbol={quote(symbol)}
         ON CONFLICT(index_code,instrument_id,observed_on) DO NOTHING;""")
     sql.append("COMMIT;")
