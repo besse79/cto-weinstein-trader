@@ -88,3 +88,22 @@ test('Saturday contains completed Friday bars without requiring exchange open',(
  assert.equal(eu.last,'2026-11-13');
  assert.equal(us.last,'2026-11-13');
 });
+
+test('London quoted in GBp converts OHLC to GBP, never the volume',()=>{
+ const data=parseYahooChart(fixture({symbol:'AZN.L',currency:'GBp',
+  timezone:'Europe/London'}),{
+  symbol:'AZN.L',currency:'GBP',asOf
+ });
+ assert.equal(data.symbol,'AZN.L');
+ assert.equal(data.currency,'GBP');
+ assert.ok(Math.abs(data.bars.at(-1).close-1.01)<1e-8);
+ assert.ok(Math.abs(data.bars.at(-1).high-1.05)<1e-8);
+ assert.equal(data.bars.at(-1).volume,1200);
+ assert.ok(data.adjustment.includes('GBp/GBX'));
+});
+test('do not accept GBp outside London or silently convert wrong-currency data',()=>{
+ const pence=fixture({symbol:'AC.PA',currency:'GBp',timezone:'Europe/Paris'});
+ assert.throws(()=>parseYahooChart(pence,{symbol:'AC.PA',currency:'GBP',asOf}),/mismatch/);
+ const london=fixture({symbol:'AZN.L',currency:'USD',timezone:'Europe/London'});
+ assert.throws(()=>parseYahooChart(london,{symbol:'AZN.L',currency:'GBP',asOf}),/mismatch/);
+});
