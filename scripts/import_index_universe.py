@@ -8,6 +8,7 @@ No constituent lists are fabricated or scraped by this tool.
 """
 import argparse
 import csv
+import hashlib
 from datetime import date
 from pathlib import Path
 import re
@@ -83,6 +84,7 @@ def main():
     ap.add_argument("--as-of", required=True, help="Snapshot date YYYY-MM-DD")
     ap.add_argument("--source", required=True, help="Constituent data provenance label")
     ap.add_argument("--apply", action="store_true", help="Write DB only after verified backup")
+    ap.add_argument("--allow-partial", action="store_true", help="Allow deliberate incomplete index snapshots; not a complete universe")
     args = ap.parse_args()
     try:
         if date.fromisoformat(args.as_of).isoformat() != args.as_of:
@@ -92,7 +94,14 @@ def main():
         rows = parse_csv(args.csv_path)
         counts = {key:sum(r[0]==key for r in rows) for key in sorted(INDEXES)}
         currencies = {key:sum(r[3]==key for r in rows) for key in sorted(CURRENCIES) if any(r[3]==key for r in rows)}
+        digest=hashlib.sha256(args.csv_path.read_bytes()).hexdigest()
         print("Validated constituent snapshot:", counts, "currencies:",currencies)
+        print("Source CSV SHA256:", digest)
+        if args.apply and not args.allow_partial:
+            required={"SP500":490,"STOXX600":590}
+            missing={k:minimum-counts[k] for k,minimum in required.items() if counts[k]<minimum}
+            if missing:
+                raise ValueError(f"Incomplete constituent snapshot; refused: {missing}. Use --allow-partial for an intentional subset.")
         print("This is a snapshot, NOT independently verified current index membership.")
         if not args.apply:
             print("DRY RUN: database untouched; pass --apply after reviewing CSV provenance.")
@@ -100,7 +109,7 @@ def main():
         check_prerequisites()
         location = backup()
         print("Verified pre-import backup:", location)
-        sql=statement(rows,args.as_of,args.source).encode()
+        sql=statement(rows,args.as_of,args.source + " [SHA256:" + digest + "]").encode()
         docker("exec","-T","db","psql","-v","ON_ERROR_STOP=1","-U","trader","-d","trader",input_data=sql)
         print("APPLIED: instrument catalog and dated index membership observations.")
         return 0
