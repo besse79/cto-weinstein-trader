@@ -6,6 +6,9 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1] / "scripts"))
 from import_index_universe import parse_csv, statement
 from prepare_sp500_snapshot import convert
+from fetch_sp500_preview import fetch_preview
+from unittest.mock import patch
+import io
 
 class IndexImportTests(unittest.TestCase):
     def write(self, rows):
@@ -81,6 +84,45 @@ class IndexImportTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"component count"):
                 convert(src,dst)
             self.assertFalse(dst.exists())
+
+    def test_preview_download_mock_has_no_database_effect(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            dest=Path(d)/"preview.csv"
+            source="symbol,security,date\\n"+ "".join(
+                f"T{i:03d},Test Company {i},2026-11-14\\n" for i in range(503))
+            class FakeResponse:
+                status=200
+                def geturl(self):
+                    from fetch_sp500_preview import SOURCE
+                    return SOURCE
+                def read(self,n):
+                    return source.encode()[:n]
+                def __enter__(self): return self
+                def __exit__(self,*args): return False
+            with patch("fetch_sp500_preview.urllib.request.urlopen",return_value=FakeResponse()):
+                result=fetch_preview(dest,day="2026-11-14")
+            self.assertEqual(result["count"],503)
+            self.assertEqual(len(parse_csv(dest)),503)
+
+    def test_preview_rejects_stale_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest=Path(d)/"preview.csv"
+            source="symbol,security,date\\n"+ "".join(
+                f"T{i:03d},Test Company {i},2026-11-13\\n" for i in range(503))
+            class FakeResponse:
+                status=200
+                def geturl(self):
+                    from fetch_sp500_preview import SOURCE
+                    return SOURCE
+                def read(self,n):
+                    return source.encode()[:n]
+                def __enter__(self): return self
+                def __exit__(self,*args): return False
+            with patch("fetch_sp500_preview.urllib.request.urlopen",return_value=FakeResponse()):
+                with self.assertRaisesRegex(ValueError,"date mismatch"):
+                    fetch_preview(dest,day="2026-11-14")
+            self.assertFalse(dest.exists())
 
 if __name__=="__main__":
     unittest.main()
