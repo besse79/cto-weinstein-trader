@@ -80,7 +80,7 @@ class IndexImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             src=Path(d)/"invalid.csv"
             dst=Path(d)/"result.csv"
-            src.write_text("Symbol,Name\\nABC,Example\\n")
+            src.write_text("Symbol,Name\nABC,Example\n")
             with self.assertRaisesRegex(ValueError,"component count"):
                 convert(src,dst)
             self.assertFalse(dst.exists())
@@ -89,8 +89,8 @@ class IndexImportTests(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             dest=Path(d)/"preview.csv"
-            source="symbol,security,date\\n"+ "".join(
-                f"T{i:03d},Test Company {i},2026-11-14\\n" for i in range(503))
+            source="symbol,security,date\n"+ "".join(
+                f"T{i:03d},Test Company {i},2026-11-14\n" for i in range(503))
             class FakeResponse:
                 status=200
                 def geturl(self):
@@ -108,8 +108,8 @@ class IndexImportTests(unittest.TestCase):
     def test_preview_rejects_stale_source(self):
         with tempfile.TemporaryDirectory() as d:
             dest=Path(d)/"preview.csv"
-            source="symbol,security,date\\n"+ "".join(
-                f"T{i:03d},Test Company {i},2026-11-13\\n" for i in range(503))
+            source="symbol,security,date\n"+ "".join(
+                f"T{i:03d},Test Company {i},2026-11-13\n" for i in range(503))
             class FakeResponse:
                 status=200
                 def geturl(self):
