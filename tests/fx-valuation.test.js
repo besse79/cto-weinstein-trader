@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {convertUsdToEur,convertEurToUsd,previewUsdPaperSize,
   valueUsdPaperPosition} from '../src/fx-valuation.mjs';
 test('FX conversion EUR/USD has one unambiguous direction',()=>{
- assert.equal(convertUsdToEur(110,1.1),100);
- assert.equal(convertEurToUsd(100,1.1),110.00000000000001);
+ assert.ok(Math.abs(convertUsdToEur(110,1.1)-100)<1e-10);
+ assert.ok(Math.abs(convertEurToUsd(100,1.1)-110)<1e-10);
  assert.equal(valueUsdPaperPosition({qty:1,priceUsd:110,rateEurUsd:1.1}).marketValueEur,100);
 });
 test('PAPER USD sizing enforces one percent risk and 25 percent allocation',()=>{
