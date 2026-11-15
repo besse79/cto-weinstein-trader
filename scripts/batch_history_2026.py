@@ -91,13 +91,13 @@ def candidates(year=2026,limit=LIMIT):
              (index_code='STOXX600_ETF_PROXY' AND observed_on='2026-11-12')
       )
       SELECT i.symbol||E'\\t'||i.currency||E'\\t'||count(c.day)||E'\\t'||
+      COALESCE(min(c.day)::text,'')||E'\\t'||COALESCE(max(c.day)::text,'')||E'\\t'||
       CASE WHEN EXISTS (
         SELECT 1 FROM market_sync_audit a
         WHERE a.symbol=i.symbol AND a.provider='YAHOO_UNOFFICIAL'
         AND a.first_day>='{begin}' AND a.last_day<='{end}'
         AND a.first_day<='{year}-12-31' AND a.last_day>='{year}-01-01'
-        AND a.first_day<>'{year}-01-01'::date
-      ) THEN 1 ELSE 0 END
+               ) THEN 1 ELSE 0 END
       FROM members m JOIN instruments i ON i.id=m.instrument_id
       LEFT JOIN candles c ON c.instrument_id=i.id AND c.day>='{begin}' AND c.day<='{end}'
       GROUP BY i.id,i.symbol,i.currency ORDER BY i.symbol""")
@@ -106,16 +106,20 @@ def candidates(year=2026,limit=LIMIT):
     unique={}
     for record in rows.splitlines():
         cols=record.split("\t")
-        if len(cols)!=4:raise RuntimeError("Invalid catalog row")
-        symbol,currency,n,audited=cols
+        if len(cols)!=6:raise RuntimeError("Invalid catalog row")
+        symbol,currency,n,first,last,audited=cols
         if not re.fullmatch(r"[A-Z0-9.^-]{1,24}",symbol):raise RuntimeError("Invalid ticker in catalog")
         if currency not in QUOTAS:raise RuntimeError("Unknown asset currency "+currency)
         if symbol in unique and unique[symbol][0]!=currency:
             raise RuntimeError("Ticker currency disagreement "+symbol)
-        previous=unique.get(symbol,(currency,0,False))
-        unique[symbol]=(currency,max(int(n),previous[1]),bool(int(audited)) or previous[2])
-    pending=[(s,c,n) for s,(c,n,audited) in sorted(unique.items())
-             if n<MIN_BARS and not audited]
+        previous=unique.get(symbol,(currency,0,"","",False))
+        unique[symbol]=(currency,max(int(n),previous[1]),first or previous[2],
+                        last or previous[3],bool(int(audited)) or previous[4])
+    floor=lambda y:f"{y}-02-15"
+    ceil=lambda y:"2026-11-07" if y==2026 else f"{y}-11-15"
+    pending=[(s,c,n) for s,(c,n,first,last,audited) in sorted(unique.items())
+             if not audited and (n<MIN_BARS or not first or not last
+                                 or first>floor(year) or last<ceil(year))]
     # Diversify Yahoo endpoint verification across all eight EXSA currencies.
     chosen=[];seen=set()
     for currency,quota in QUOTAS.items():
@@ -215,7 +219,10 @@ def execute(*,apply=False,year=2026,limit=LIMIT):
                     raise RuntimeError("PostgreSQL candle count unexpectedly decreased")
                 overview["successful"].append({"symbol":symbol,"currency":currency,
                     "imported":result["count"],"stored":int(saved),
-                    "first":result["first"],"last":result["last"]})
+                    "first":result["first"],"last":result["last"],
+                    "short_history":int(saved)<MIN_BARS or
+                      result["first"]>f"{year}-02-15" or
+                      result["last"]<("2026-11-07" if year==2026 else f"{year}-11-15")})
                 print(f"[{index}/{total}] {symbol}: {int(saved)} daily {year} bars",flush=True)
             except Exception as error:
                 msg=str(error)[:350]
