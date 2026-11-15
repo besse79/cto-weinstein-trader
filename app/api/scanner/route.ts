@@ -10,12 +10,23 @@ const BAR_SQL="SELECT day::text AS day,open::float8 AS open,high::float8 AS high
 const BATCH_SQL="SELECT instrument_id,day::text AS day,open::float8 AS open,high::float8 AS high,low::float8 AS low,close::float8 AS close,volume::int AS volume FROM candles WHERE instrument_id=ANY($1::bigint[]) AND day<=CURRENT_DATE ORDER BY instrument_id,day";
 const MAX_ASSETS_PER_READ=24; // Limit heap, avoid 1,100 sequential SQL requests.
 
-export async function GET(){
+export async function GET(request?:Request){
  try{
+  // The complete scanner still covers all stored instruments by default.
+  // PAPER EUR calls scope it to only actionable EUR securities; this does
+  // not alter any Weinstein stage/stop/risk criterion.
+  const currency=request?new URL(request.url).searchParams.get('currency'):null;
+  if(currency!==null&&!['EUR','USD'].includes(currency))
+   return Response.json({error:'Unsupported currency filter'},{status:400});
   const now=new Date(),asOf=parisClock(now).day;
-  const all=(await pool.query("SELECT id,symbol,name,currency FROM instruments ORDER BY symbol")).rows;
+  const all=(await pool.query(
+   currency?"SELECT id,symbol,name,currency FROM instruments WHERE currency=$1 ORDER BY symbol":
+   "SELECT id,symbol,name,currency FROM instruments ORDER BY symbol",
+   currency?[currency]:[])).rows;
   const benchmarks=new Map<string,unknown[]>();
   for(const [currency,symbol] of Object.entries(BENCHMARK_BY_CURRENCY)){
+   if(request&&new URL(request.url).searchParams.get('currency')!==null&&
+      new URL(request.url).searchParams.get('currency')!==currency)continue;
    const reference=all.find(i=>i.symbol===symbol&&i.currency===currency);
    if(!reference)continue;
    benchmarks.set(currency,(await pool.query(BAR_SQL,[reference.id])).rows);
