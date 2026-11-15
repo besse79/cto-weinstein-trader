@@ -30,6 +30,16 @@ class BackfillFiveYearTests(unittest.TestCase):
         self.assertFalse(any(x["audited_5y"] for x in pending))
         self.assertEqual(len(m.balanced(pending,48)),48)
 
+    def test_six_raw_yahoo_defects_stay_quarantined_until_explicit_retry(self):
+        tickers=("AAF.L","AAL.L","ABDN.L","AKER.OL","ABF.L","ADM.L")
+        rows={s:item(s,"GBP" if s.endswith(".L") else "NOK") for s in tickers}
+        rows["AAPL"]=item("AAPL")
+        state={"version":1,"completed":{},"blocked":{}}
+        self.assertEqual([v["symbol"] for v in m.available(rows,state)],["AAPL"])
+        self.assertEqual(len(m.available(rows,state,retry_blocked=True)),7)
+        self.assertEqual(sum(len(v) for v in m.KNOWN_OHLCV_QUARANTINE.values()),10)
+        self.assertEqual(len(m.KNOWN_OHLCV_QUARANTINE),6)
+
     def test_balanced_across_eight_currencies(self):
         rows=[]
         for currency in m.CURRENCIES:
