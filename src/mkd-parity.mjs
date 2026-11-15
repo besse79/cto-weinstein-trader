@@ -42,17 +42,71 @@ export function compareMarketSeries(local,mkd,{
 }
 export function compareWeinsteinSignals(w,mkd){
  if(!Array.isArray(w)||!Array.isArray(mkd))throw new Error('Signals required');
- const keys=['symbol','currency','signal','stage','eligible','asOf','benchmark'];
+ const keys=['symbol','currency','signal','stage','eligible','asOf','benchmark',
+  'stageRank','setupScore','lastCompletedClose','ma30','prevMa30','priorHigh',
+  'relativeStrength','volumeRatio','supportCandidate','hasBaseForBreakout',
+  'breakout','rising','aboveMa'];
  const bySymbol=xs=>new Map(xs.map(x=>[x.symbol,x]));
  const a=bySymbol(w),b=bySymbol(mkd);
  const differences=[];
  for(const symbol of new Set([...a.keys(),...b.keys()])){
   const left=a.get(symbol),right=b.get(symbol);
   if(!left||!right){differences.push({symbol,type:'MISSING_SIGNAL'});continue}
-  for(const key of keys)if(left[key]!==right[key])
-   differences.push({symbol,type:'SIGNAL_DIFFERENCE',field:key,
-     local:left[key],mkd:right[key]});
+  for(const key of keys){
+   const l=left[key],r=right[key];
+   const equal=typeof l==='number'&&typeof r==='number'
+    ?Number.isFinite(l)&&Number.isFinite(r)&&Math.abs(l-r)<=0.00001:l===r;
+   if(!equal)differences.push({symbol,type:'SIGNAL_DIFFERENCE',field:key,
+     local:l,mkd:r});
+  }
  }
  return {status:differences.length?'NO_PARITY':'PARITY_CONFIRMED',differences,
   comparedSymbols:a.size,mutations:0};
+}
+
+/**
+ * Compare the same deterministic historical portfolio computation using
+ * local vs MKD OHLCV snapshots. Analysis only: no replayed order is executed.
+ */
+export function compareBacktestOutputs(local,mkd,{tolerance=0.00001}={}){
+ if(!local||!mkd||!Number.isFinite(tolerance)||tolerance<0||
+  local.mode!=='PAPER_PORTFOLIO_BACKTEST'||
+  mkd.mode!=='PAPER_PORTFOLIO_BACKTEST'||
+  !Array.isArray(local.equityCurve)||!Array.isArray(mkd.equityCurve)||
+  !Array.isArray(local.trades)||!Array.isArray(mkd.trades))
+  throw new Error('Two PAPER backtest results are required');
+ const differences=[];
+ const metrics=['initialCash','finalCash','finalEquity','returnPct',
+  'maxDrawdownPct','tradeCount','closedPnl','symbolsAnalyzed'];
+ for(const key of metrics){
+  const a=local[key],b=mkd[key];
+  const equal=typeof a==='number'&&typeof b==='number'
+   ?Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=tolerance:a===b;
+  if(!equal)differences.push({type:'PERFORMANCE_MISMATCH',field:key,local:a,mkd:b});
+ }
+ if(local.equityCurve.length!==mkd.equityCurve.length)
+  differences.push({type:'EQUITY_CURVE_LENGTH'});
+ else for(let i=0;i<local.equityCurve.length;i++){
+  const a=local.equityCurve[i],b=mkd.equityCurve[i];
+  if(a.week!==b.week||a.openPositions!==b.openPositions||
+   !Number.isFinite(a.cash)||!Number.isFinite(b.cash)||
+   !Number.isFinite(a.equity)||!Number.isFinite(b.equity)||
+   Math.abs(a.cash-b.cash)>tolerance||Math.abs(a.equity-b.equity)>tolerance)
+    differences.push({type:'EQUITY_CURVE_MISMATCH',week:a.week});
+ }
+ if(local.trades.length!==mkd.trades.length)
+  differences.push({type:'TRADE_COUNT_MISMATCH'});
+ else for(let i=0;i<local.trades.length;i++){
+  const a=local.trades[i],b=mkd.trades[i];
+  for(const field of ['symbol','signalWeek','entryWeek','exitWeek','quantity',
+   'exitReason','entryPrice','exitPrice','stop','pnl']){
+   const x=a[field],y=b[field];
+   const equal=typeof x==='number'&&typeof y==='number'
+    ?Number.isFinite(x)&&Number.isFinite(y)&&Math.abs(x-y)<=tolerance:x===y;
+   if(!equal)differences.push({type:'TRADE_MISMATCH',trade:i,field});
+  }
+ }
+ return {status:differences.length?'NO_PARITY':'PARITY_CONFIRMED',
+  localWeeks:local.equityCurve.length,mkdWeeks:mkd.equityCurve.length,
+  differences,mutations:0};
 }
