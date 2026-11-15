@@ -4,6 +4,15 @@
  */
 const positive=x=>Number.isFinite(x)&&x>0;
 const avg=xs=>xs.reduce((a,b)=>a+b,0)/xs.length;
+export function completedWeekCutoff(asOf){
+ if(typeof asOf!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(asOf))throw Error('Invalid asOf');
+ const day=new Date(asOf+'T12:00:00Z');
+ if(!Number.isFinite(+day)||day.toISOString().slice(0,10)!==asOf)throw Error('Invalid asOf');
+ const weekday=day.getUTCDay();
+ day.setUTCDate(day.getUTCDate()-(weekday+6)%7);
+ if(weekday===6||weekday===0)day.setUTCDate(day.getUTCDate()+7);
+ return day.toISOString().slice(0,10);
+}
 export function aggregateWeeks(daily){
   if(!Array.isArray(daily))throw new Error('Candles required');
   const rows=[...daily].sort((a,b)=>String(a.day).localeCompare(String(b.day)));
@@ -31,9 +40,7 @@ export function aggregateWeeks(daily){
 /** @param {any[]} daily @param {{asOf?:string, benchmarkDaily?:any[]|null}} [options] */
 export function scanWeinstein(daily,{asOf=new Date().toISOString().slice(0,10),benchmarkDaily=null}={}){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf))throw new Error('Invalid asOf');
- const asDay=new Date(asOf+'T12:00:00Z');if(!Number.isFinite(+asDay))throw new Error('Invalid asOf');
- const monday=new Date(asDay);monday.setUTCDate(asDay.getUTCDate()-(asDay.getUTCDay()+6)%7);
- const currentWeek=monday.toISOString().slice(0,10);
+ const currentWeek=completedWeekCutoff(asOf);
  let weeks=aggregateWeeks(daily).filter(w=>w.week<currentWeek&&w.lastDay<=asOf);
  if(weeks.length<40)return {signal:'INSUFFICIENT_HISTORY',weeks:weeks.length,eligible:false};
  const c=weeks.map(w=>w.close), v=weeks.map(w=>w.volume);
