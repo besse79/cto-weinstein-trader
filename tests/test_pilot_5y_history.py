@@ -22,7 +22,7 @@ class PilotFiveYearTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             empty={"bars":0,"first":"","last":""}
             complete={"bars":1200,"first":"2021-11-15","last":date.today().isoformat()}
-            counts=iter([empty,complete,empty,complete,empty,complete])
+            counts=iter([empty,empty,empty,complete,complete,complete])
             def remote(token,symbol):
                 return {"symbol":symbol,"count":1200,"first":"2021-11-15",
                         "last":(date.today()-timedelta(days=2)).isoformat()}
