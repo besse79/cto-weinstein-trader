@@ -34,7 +34,7 @@ class BenchmarkFridayTests(unittest.TestCase):
                  patch.object(m,"verified_backup",return_value=Path(d)),\
                  patch.object(m,"token",return_value="local-secret"),\
                  patch.object(m,"paper_hash",return_value="unchanged"),\
-                 patch.object(m,"dashboard",return_value={"mode":"PAPER","initial":500}),\
+                 patch.object(m,"check_paper_settings",return_value=True),\
                  patch.object(m,"sync_benchmarks",return_value=SYNC) as sync,\
                  patch.object(m,"paper_candidates",return_value=CANDIDATES):
                 self.assertEqual(m.execute(True),0)
@@ -43,7 +43,7 @@ class BenchmarkFridayTests(unittest.TestCase):
             self.assertEqual(r["status"],"FRIDAY_BENCHMARKS_COMPLETE")
             self.assertTrue(r["paper_unchanged"])
             self.assertFalse(r["orders_placed"])
-            self.assertEqual(r["paper_candidates"]["eligible_count"],0)
+            self.assertEqual(r["candidate_screen"]["data"]["eligible_count"],0)
 
     def test_sync_failure_remains_blocked_and_records_verified_backup(self):
         with tempfile.TemporaryDirectory() as d:
@@ -84,6 +84,40 @@ class BenchmarkFridayTests(unittest.TestCase):
         backup.assert_not_called()
         token.assert_not_called()
         sync.assert_not_called()
+
+    def test_screen_timeout_does_not_erase_successful_friday_import(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(m,"guard"),\
+                 patch.object(m,"latest_benchmarks",side_effect=[BEFORE,AFTER]),\
+                 patch.object(m,"verified_backup",return_value=Path(d)),\
+                 patch.object(m,"token",return_value="local-secret"),\
+                 patch.object(m,"paper_hash",return_value="stable"),\
+                 patch.object(m,"check_paper_settings",return_value=True),\
+                 patch.object(m,"sync_benchmarks",return_value=SYNC),\
+                 patch.object(m,"paper_candidates",side_effect=TimeoutError("timed out")):
+                self.assertEqual(m.execute(True),0)
+            r=json.loads((Path(d)/m.REPORT).read_text())
+            self.assertEqual(r["status"],"FRIDAY_BENCHMARKS_COMPLETE_SCREEN_PENDING")
+            self.assertTrue(r["paper_unchanged"])
+            self.assertEqual(r["after"]["SPY"]["last"],"2026-11-13")
+            self.assertFalse(r["candidate_screen"]["orders_allowed"])
+            self.assertFalse(r["orders_placed"])
+
+    def test_already_current_handles_slow_paper_candidates_fail_closed(self):
+        with patch.object(m,"guard"),\
+             patch.object(m,"latest_benchmarks",return_value=AFTER),\
+             patch.object(m,"paper_candidates",side_effect=TimeoutError("scanner stalled")),\
+             patch.object(m,"sync_benchmarks") as sync:
+            self.assertEqual(m.execute(True),0)
+        sync.assert_not_called()
+
+    def test_sql_paper_guard_checks_settings_without_full_dashboard(self):
+        with patch.object(m,"sql",return_value="account_type=CTO\ninitial_cash=500\npaper_only=true") as query:
+            self.assertTrue(m.check_paper_settings())
+        self.assertNotIn("candles",query.call_args.args[0])
+        with patch.object(m,"sql",return_value="account_type=CTO\ninitial_cash=500\npaper_only=false"):
+            with self.assertRaisesRegex(RuntimeError,"settings mismatch"):
+                m.check_paper_settings()
 
     def test_guarded_api_only_delta_and_two_reference_symbols(self):
         import io
