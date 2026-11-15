@@ -158,7 +158,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify Python syntax
-        run: python3 -m py_compile deploy_local.py restore.py scripts/validate_yahoo.py scripts/import_index_universe.py scripts/prepare_sp500_snapshot.py scripts/fetch_sp500_preview.py scripts/v4_release_gate.py scripts/prepare_exsa_holdings_preview.py scripts/fetch_exsa_preview.py scripts/v4_1_universe_preflight.py scripts/stage_v4_universe.py scripts/release_v4_1.py scripts/pilot_history_2026.py scripts/batch_history_2026.py scripts/pilot_5y_history.py scripts/backfill_5y_universe.py scripts/diagnose_yahoo_ohlcv.py
+        run: python3 -m py_compile deploy_local.py restore.py scripts/validate_yahoo.py scripts/import_index_universe.py scripts/prepare_sp500_snapshot.py scripts/fetch_sp500_preview.py scripts/v4_release_gate.py scripts/prepare_exsa_holdings_preview.py scripts/fetch_exsa_preview.py scripts/v4_1_universe_preflight.py scripts/stage_v4_universe.py scripts/release_v4_1.py scripts/pilot_history_2026.py scripts/batch_history_2026.py scripts/pilot_5y_history.py scripts/backfill_5y_universe.py scripts/diagnose_yahoo_ohlcv.py scripts/check_eurusd_readiness.py
       - name: Validate V4.1 constituent importer without connecting to a database
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check host prerequisites without changing state
