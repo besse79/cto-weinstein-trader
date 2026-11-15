@@ -13,7 +13,8 @@ def catalog_fixture():
                            ("SEK",20),("DKK",20),("NOK",20),("PLN",20)]:
         for n in range(count):
             bars=219 if currency=="USD" and n==0 else 0
-            rows.append(f"{currency}{n:03d}.PA\t{currency}\t{bars}")
+            rows.append(f"{currency}{n:03d}.PA\t{currency}\t{bars}\t"+(
+                "2026-01-02\t2026-11-13" if bars else "\t")+"\t0")
     return "\n".join(rows)
 
 class BatchHistory2026Tests(unittest.TestCase):
@@ -29,6 +30,28 @@ class BatchHistory2026Tests(unittest.TestCase):
         self.assertIn("SELECT DISTINCT instrument_id",query.call_args.args[0])
         self.assertNotIn("JOIN index_constituent_observations o",query.call_args.args[0])
 
+    def test_prior_year_selection_and_72_capacity(self):
+        with patch.object(b,"sql",return_value=catalog_fixture()):
+            selected,pending,unique=b.candidates(2025,72)
+        self.assertEqual(len(selected),72)
+        self.assertEqual(unique,300)
+        self.assertEqual(pending,299)
+        self.assertEqual(sum(x[1]=="PLN" for x in selected),1)
+        with self.assertRaisesRegex(ValueError,"batch capacity"):
+            b.candidates(2025,100)
+
+    def test_2025_result_rejects_cross_year_quotes(self):
+        with patch.object(b,"urlopen") as request,patch.object(b,"json") as parser:
+            response=request.return_value.__enter__.return_value
+            parser.load.return_value={"ok":True,"provider":"YAHOO_UNOFFICIAL",
+               "results":[{"symbol":"AAPL","count":252,"first":"2025-01-02",
+                           "last":"2025-12-31"}]}
+            result=b.token_request("test","AAPL",2025)
+            self.assertEqual(result["count"],252)
+            parser.load.return_value["results"][0]["first"]="2026-01-02"
+            with self.assertRaisesRegex(RuntimeError,"Unexpected year"):
+                b.token_request("test","AAPL",2025)
+
     def test_dry_run_no_backup_or_network(self):
         with patch.object(b,"guard"),patch.object(b,"candidates",
                 return_value=([("AAPL","USD",0)],1,1105)),\
@@ -43,7 +66,7 @@ class BatchHistory2026Tests(unittest.TestCase):
             def fake_sql(q):
                 if "count(*) FROM candles" in q:return "219"
                 raise AssertionError("Unexpected SQL: "+q)
-            def result(token,symbol):
+            def result(token,symbol,year):
                 return {"symbol":symbol,"count":219,"first":"2026-01-02",
                         "last":"2026-11-13"}
             with patch.object(b,"guard"),patch.object(b,"candidates",
