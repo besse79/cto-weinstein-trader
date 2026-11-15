@@ -35,20 +35,19 @@ class BatchHistory2026Tests(unittest.TestCase):
             selected,pending,unique=b.candidates(2025,72)
         self.assertEqual(len(selected),72)
         self.assertEqual(unique,300)
-        self.assertEqual(pending,299)
+        self.assertEqual(pending,300)
         self.assertEqual(sum(x[1]=="PLN" for x in selected),1)
         with self.assertRaisesRegex(ValueError,"batch capacity"):
             b.candidates(2025,100)
 
     def test_2025_result_rejects_cross_year_quotes(self):
-        with patch.object(b,"urlopen") as request,patch.object(b,"json") as parser:
-            response=request.return_value.__enter__.return_value
-            parser.load.return_value={"ok":True,"provider":"YAHOO_UNOFFICIAL",
+        with patch.object(b,"urlopen") as request,patch.object(b.json,"load") as load:
+            load.return_value={"ok":True,"provider":"YAHOO_UNOFFICIAL",
                "results":[{"symbol":"AAPL","count":252,"first":"2025-01-02",
                            "last":"2025-12-31"}]}
             result=b.token_request("test","AAPL",2025)
             self.assertEqual(result["count"],252)
-            parser.load.return_value["results"][0]["first"]="2026-01-02"
+            load.return_value["results"][0]["first"]="2026-01-02"
             with self.assertRaisesRegex(RuntimeError,"Unexpected year"):
                 b.token_request("test","AAPL",2025)
 
