@@ -50,6 +50,23 @@ class DiagnoseYahooOHLCVTests(unittest.TestCase):
         self.assertEqual(report["invalid_rows_by_reason"],
                          {"NON_POSITIVE_OR_NULL_PRICE":1,"INVALID_VOLUME":1})
 
+    def test_fetch_runs_only_read_only_node_inside_deployed_web_container(self):
+        import json
+        from unittest.mock import patch
+        import diagnose_yahoo_ohlcv as diagnosis
+        response={"chart":{"result":[]}}
+        class Result:
+            returncode=0
+            stdout=json.dumps(response)
+            stderr=""
+        with patch.object(diagnosis.subprocess,"run",return_value=Result()) as call:
+            self.assertEqual(diagnosis.fetch_chart("AAF.L"),response)
+        cmd=call.call_args.args[0]
+        self.assertEqual(cmd[:8],["docker","compose","-p","cto_weinstein",
+                                  "exec","-T","web","node"])
+        self.assertEqual(cmd[-2:],["--","AAF.L"])
+        self.assertIn("range','5y'",cmd[10])
+
     def test_reject_currency_source_symbol_mismatch_and_bad_columns(self):
         data=mock_chart()
         with self.assertRaisesRegex(ValueError,"ticker mismatch"):
