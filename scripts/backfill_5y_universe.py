@@ -301,9 +301,10 @@ def execute(*,apply=False,limit=48,retry_blocked=False):
                     "count":response["count"],"checked":date.today().isoformat(),
                     "full_5y":full}
                 state["blocked"].pop(symbol,None)
-                print("["+str(index)+"/"+str(len(selected))+"] "+symbol+
-                      ": "+str(response["count"])+(" FULL" if full else " SHORT_HISTORY"),
-                      flush=True)
+                if index<=3 or index%25==0 or index==len(selected) or not full:
+                    print("["+str(index)+"/"+str(len(selected))+"] "+symbol+
+                          ": "+str(response["count"])+(" FULL" if full else " SHORT_HISTORY"),
+                          flush=True)
             except Exception as exc:
                 why=str(exc)[:400]
                 info["blocked"].append({"symbol":symbol,"currency":row["currency"],"reason":why})
@@ -336,8 +337,17 @@ def execute(*,apply=False,limit=48,retry_blocked=False):
     info["finished_utc"]=datetime.now(timezone.utc).isoformat()
     atomic_json(STATE_FILE,state)
     atomic_json(report,info)
-    print(json.dumps({k:v for k,v in info.items() if k!="symbols"},
-                     indent=2,ensure_ascii=False))
+    summary={"status":info["status"],"catalog_unique":info["catalog_unique"],
+             "verified_before":info["verified_5y_in_db"],
+             "selected":info["selected"],"full_5y_imported":len(info["successful"]),
+             "short_history_imported":len(info["short_history"]),
+             "blocked_count":len(info["blocked"]),
+             "blocked":info["blocked"][:20],
+             "short_history":info["short_history"][:10],
+             "backup":info["backup"],"report":str(report),
+             "scheduler":info["scheduler"],"paper_unchanged":info.get("paper_unchanged",False)}
+    if "error" in info:summary["error"]=info["error"]
+    print(json.dumps(summary,indent=2,ensure_ascii=False))
     return 0 if info["status"]=="COMPLETE" else 1
 
 def main():
