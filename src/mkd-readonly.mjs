@@ -31,7 +31,7 @@ export function checkedBaseUrl(value){
  if(u.username||u.password||u.search||u.hash||u.pathname!=='/'||
    !['http:','https:'].includes(u.protocol))
   throw new MkdInvalidData('MKD endpoint must be a clean HTTPS or internal HTTP origin');
- if(u.protocol==='http:'&&!['localhost','127.0.0.1','mkd','market-data-hub'].includes(u.hostname))
+ if(u.protocol==='http:'&&!['localhost','127.0.0.1','host.docker.internal','mkd','market-data-hub'].includes(u.hostname))
   throw new MkdInvalidData('External cleartext MKD endpoints forbidden');
  return u.origin;
 }
