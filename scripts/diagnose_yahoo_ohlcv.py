@@ -10,10 +10,9 @@ from collections import Counter
 from datetime import datetime, timezone
 import json
 import math
+import subprocess
 import sys
 import time
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 SYMBOLS=("AAF.L","AAL.L","ABDN.L","AKER.OL","ABF.L","ADM.L")
 BASE="https://query1.finance.yahoo.com/v8/finance/chart/"
@@ -70,6 +69,33 @@ def audit_series(payload,symbol):
             "invalid_rows_by_reason":dict(issues),"first_examples":examples,
             "relative_gaps":{k:round(v,8) for k,v in magnitude.items()}}
 
+# Fetch in the SAME Docker/web Node runtime as the deployed sync API,
+# eliminating differences in the WSL host's Yahoo TLS/user-agent behavior.
+# No internal app tokens, database connections, or API writes are used.
+FETCH_NODE=r"""
+(async()=>{
+ const symbol=process.argv[1];
+ const url=new URL('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol));
+ url.searchParams.set('range','5y');
+ url.searchParams.set('interval','1d');
+ url.searchParams.set('includePrePost','false');
+ const response=await fetch(url,{cache:'no-store',headers:{Accept:'application/json'},
+   signal:AbortSignal.timeout(25000)});
+ if(!response.ok){console.error('YAHOO_HTTP_'+response.status);process.exitCode=4;return}
+ console.log(JSON.stringify(await response.json()));
+})().catch(e=>{console.error('YAHOO_NETWORK_ERROR '+String(e));process.exitCode=5})
+"""
+
+def fetch_chart(symbol):
+    result=subprocess.run(
+        ["docker","compose","-p","cto_weinstein","exec","-T","web",
+         "node","-e",FETCH_NODE,"--",symbol],
+        capture_output=True,text=True,timeout=35)
+    if result.returncode:
+        reason=(result.stderr or result.stdout)[-300:].strip()
+        raise RuntimeError("Docker web Yahoo read blocked: "+reason)
+    return json.loads(result.stdout)
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit",type=int,choices=range(1,7),default=6,
@@ -78,22 +104,16 @@ def main():
     report={"status":"READ_ONLY_DIAGNOSTIC","results":[],"provider_refusal":None,
             "note":"Raw exchange timestamps shown in UTC, no candle modifications"}
     for index,symbol in enumerate(SYMBOLS[:args.limit]):
-        query=BASE+symbol+"?range=5y&interval=1d&includePrePost=false"
-        request=Request(query,headers={"Accept":"application/json","User-Agent":"Mozilla/5.0"})
         try:
-            with urlopen(request,timeout=25) as response:
-                if response.status!=200:
-                    raise ValueError("Yahoo unexpected HTTP response")
-                data=json.load(response)
+            data=fetch_chart(symbol)
             summary=audit_series(data,symbol)
             report["results"].append(summary)
             print(symbol+": "+str(summary["invalid_rows_by_reason"]),file=sys.stderr,flush=True)
-        except HTTPError as exc:
-            report["provider_refusal"]={"symbol":symbol,"http_status":exc.code}
+        except (RuntimeError,subprocess.TimeoutExpired) as exc:
+            report["provider_refusal"]={"symbol":symbol,"reason":str(exc)[-250:]}
             break
-        except (URLError,ValueError,KeyError,TypeError) as exc:
+        except (ValueError,KeyError,TypeError) as exc:
             report["results"].append({"symbol":symbol,"diagnostic_error":str(exc)[:250]})
-            # Service or response problems must not become stealth invalid data.
             break
         if index+1<args.limit:time.sleep(3)
     print(json.dumps(report,ensure_ascii=False,indent=2))
