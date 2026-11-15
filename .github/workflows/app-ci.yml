@@ -1,7 +1,7 @@
 name: Application CI
 on:
   push:
-    branches: [develop, main]
+    branches: [develop, main, feature/v4-2a-mkd-readonly]
   pull_request:
     branches: [develop, feature/v4-1-universe-collection]
 concurrency:
