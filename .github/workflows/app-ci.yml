@@ -130,9 +130,11 @@ jobs:
           exit 1
       - name: Verify Yahoo import, currency benchmarks and refusal on invalid ticker
         run: node tests/yahoo-e2e.mjs
+      - name: Verify isolated 2025 year-window Yahoo backfill preserves PAPER account
+        run: node tests/yahoo-year-e2e.mjs
       - name: Verify failed import did not create audit entries
         run: |
-          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 9
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 10
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM orders" | grep -Fx 0
       - name: Test automated history recovery on isolated Yahoo mock
         run: |
@@ -141,7 +143,7 @@ jobs:
           docker compose --profile automation run --rm scheduler node scripts/market-scheduler.mjs --once
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_job_runs WHERE job_type='BOOTSTRAP' AND status='SUCCESS'" | grep -Fx 1
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM candles WHERE instrument_id=(SELECT id FROM instruments WHERE symbol='AC.PA')" | awk '{if ($1<600) exit 1}'
-          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 10
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 11
       - name: Diagnostics
         if: failure()
         run: |
