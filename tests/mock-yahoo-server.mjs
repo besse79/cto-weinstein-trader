@@ -39,7 +39,7 @@ const server=http.createServer((req,res)=>{
  const first=u.searchParams.get('period1');
  const end=u.searchParams.get('period2');
  if(range==='5y'&&!first&&!end)return respond(200,chart(symbol));
- if(!range&&first&&end&&/^\\d{10}$/.test(first)&&/^\\d{10}$/.test(end)&&
+ if(!range&&first&&end&&/^\d{10}$/.test(first)&&/^\d{10}$/.test(end)&&
     Number(end)>Number(first)&&Number(end)-Number(first)<=370*86400){
    const timestamps=rows.filter(t=>t>=Number(first)&&t<Number(end));
    if(!timestamps.length)return respond(400,{error:'empty historical-year fixture'});
