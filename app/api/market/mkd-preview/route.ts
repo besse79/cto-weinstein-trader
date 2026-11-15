@@ -24,10 +24,10 @@ export async function GET(req:NextRequest){
   if(match.length!==1||!['EUR','USD'].includes(match[0].currency))
    throw new MkdInvalidData('Local instrument unavailable or unsupported currency');
   const i=match[0];
-  const rows=(await pool.query(\`SELECT day::text AS day,open::float8 AS open,
+  const rows=(await pool.query(`SELECT day::text AS day,open::float8 AS open,
     high::float8 AS high,low::float8 AS low,close::float8 AS close,volume::int AS volume
     FROM candles WHERE instrument_id=$1 AND day>=$2::date AND day<=$3::date
-      AND day<=$4::date ORDER BY day LIMIT 1001\`,
+      AND day<=$4::date ORDER BY day LIMIT 1001`,
     [i.id,start,end,asOf.slice(0,10)])).rows;
   if(rows.length>1000||rows.length===0)
    throw new MkdInvalidData('Local bar history empty or exceeds preview limit');
