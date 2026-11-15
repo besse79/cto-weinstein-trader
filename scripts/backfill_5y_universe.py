@@ -39,6 +39,19 @@ MAX_LIMIT=1105
 STOP_REFUSAL=("HTTP 429","HTTP 403","HTTP 401","TOO MANY REQUESTS","RATE LIMIT",
               "RATE-LIMIT","CAPTCHA")
 TICKER=re.compile(r"^[A-Z0-9.^-]{1,24}$")
+# Confirmed by a read-only Yahoo 5-year source diagnostic (2026-11-15).
+# No price interpolation, reconstruction, repair, or deletion: these tickers
+# remain visibly excluded from full-history collection until independently
+# verified against a second reliable source. --retry-blocked explicitly
+# permits a future recheck if Yahoo has corrected its original records.
+KNOWN_OHLCV_QUARANTINE={
+    "AAF.L":("2024-05-01",),
+    "AAL.L":("2024-05-01",),
+    "ABDN.L":("2024-05-02","2024-10-16"),
+    "AKER.OL":("2022-01-10","2022-11-07","2023-11-06","2024-04-17"),
+    "ABF.L":("2026-03-02",),
+    "ADM.L":("2026-03-02",),
+}
 
 def cmd(*args):
     return subprocess.run(args,cwd=ROOT,check=True,capture_output=True)
@@ -155,6 +168,8 @@ def available(rows,state,*,retry_blocked=False):
     pending=[]
     for symbol,item in rows.items():
         if item["audited_5y"]:continue
+        if symbol in KNOWN_OHLCV_QUARANTINE and not retry_blocked:
+            continue
         saved=done.get(symbol)
         if isinstance(saved,dict) and saved.get("currency")==item["currency"]:
             try:
@@ -270,7 +285,10 @@ def execute(*,apply=False,limit=48,retry_blocked=False):
           "verified_5y_in_db":sum(x["audited_5y"] for x in catalog.values()),
           "pending_before_limit":len(pending),"selected":len(selected),
           "symbols":[{"symbol":x["symbol"],"currency":x["currency"],"prior_bars":x["bars"]} for x in selected],
-          "mode":"PAPER","scheduler":"PAUSED","source":"YAHOO_UNOFFICIAL_RANGE_5Y"}
+          "mode":"PAPER","scheduler":"PAUSED","source":"YAHOO_UNOFFICIAL_RANGE_5Y",
+          "quarantined_source_defects":{sym:list(days) for sym,days in
+            KNOWN_OHLCV_QUARANTINE.items() if sym in catalog},
+          "quarantined_count":sum(sym in catalog for sym in KNOWN_OHLCV_QUARANTINE)}
     if not apply:
         print(json.dumps(info,ensure_ascii=False,indent=2))
         return 0
@@ -345,6 +363,8 @@ def execute(*,apply=False,limit=48,retry_blocked=False):
              "blocked":info["blocked"][:20],
              "short_history":info["short_history"][:10],
              "backup":info["backup"],"report":str(report),
+             "quarantined_count":info["quarantined_count"],
+             "quarantined_source_defects":info["quarantined_source_defects"],
              "scheduler":info["scheduler"],"paper_unchanged":info.get("paper_unchanged",False)}
     if "error" in info:summary["error"]=info["error"]
     print(json.dumps(summary,indent=2,ensure_ascii=False))
@@ -354,7 +374,8 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--limit",type=int,default=48,help="One execution, 1..1105 symbols; default 48")
     p.add_argument("--apply",action="store_true",help="Backup then import in bounded foreground requests")
-    p.add_argument("--retry-blocked",action="store_true",help="Retry tickers on transient error cooldown")
+    p.add_argument("--retry-blocked",action="store_true",
+                   help="Explicitly retry failed tickers, including source-quarantined cases; no data validation is relaxed")
     args=p.parse_args()
     STATE_DIR.mkdir(parents=True,exist_ok=True,mode=0o700)
     STATE_DIR.chmod(0o700)
