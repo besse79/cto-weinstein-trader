@@ -65,7 +65,7 @@ class DiagnoseYahooOHLCVTests(unittest.TestCase):
         self.assertEqual(cmd[:8],["docker","compose","-p","cto_weinstein",
                                   "exec","-T","web","node"])
         self.assertEqual(cmd[-2:],["--","AAF.L"])
-        self.assertIn("range','5y'",cmd[10])
+        self.assertIn("range','5y'",cmd[9])
 
     def test_reject_currency_source_symbol_mismatch_and_bad_columns(self):
         data=mock_chart()
