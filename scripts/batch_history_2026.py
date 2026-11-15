@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""V4.1 2026 Yahoo research-paper multi-currency checkpointed batch.
+"""V4.1 Yahoo research-paper multi-currency yearly checkpointed backfill.
 
 For the deployed WSL V4.1 app, run from its root using:
   git show FETCH_HEAD:scripts/batch_history_2026.py | python3 - --apply
 
-Intentionally 24 previously incomplete symbols across currencies. Never
+Configurable 24..72 previously incomplete symbols across currencies. Never
 places orders. Requires paused scheduler and healthy PAPER 500 account.
 Verifies SHA256 of complete source+Postgres backup BEFORE any data writes.
 No background execution, no full-universe overload. Each instrument is
@@ -30,6 +30,9 @@ QUOTAS={"USD":8,"EUR":6,"GBP":3,"CHF":2,"SEK":2,"DKK":1,"NOK":1,"PLN":1}
 EXPECTED={"SP500":503,"STOXX600_ETF_PROXY":602}
 EXPECTED_DATES={"SP500":"2026-11-14","STOXX600_ETF_PROXY":"2026-11-12"}
 LIMIT=24
+MAX_LIMIT=72
+MIN_BARS=150
+SUPPORTED_YEARS=range(2021,2027)
 STOP_WORDS=("HTTP 429","HTTP 403","HTTP 401","RATE LIMIT","RATE-LIMIT","TOO MANY REQUESTS","CAPTCHA")
 
 def run(*args,stdin=None):
@@ -77,30 +80,42 @@ def guard():
     if refs!=["SP500:503","STOXX600_ETF_PROXY:602"]:
         raise RuntimeError("Unexpected index constituents: "+repr(refs))
 
-def candidates():
-    rows=sql("""WITH members AS (
+def candidates(year=2026,limit=LIMIT):
+    if year not in SUPPORTED_YEARS or not 1<=limit<=MAX_LIMIT:
+        raise ValueError("Unsupported year or batch capacity")
+    begin=f"{year}-01-01"
+    end="2026-11-13" if year==2026 else f"{year}-12-31"
+    rows=sql(f"""WITH members AS (
        SELECT DISTINCT instrument_id FROM index_constituent_observations
        WHERE (index_code='SP500' AND observed_on='2026-11-14') OR
              (index_code='STOXX600_ETF_PROXY' AND observed_on='2026-11-12')
       )
-      SELECT i.symbol||E'\\t'||i.currency||E'\\t'||count(c.day)
+      SELECT i.symbol||E'\\t'||i.currency||E'\\t'||count(c.day)||E'\\t'||
+      CASE WHEN EXISTS (
+        SELECT 1 FROM market_sync_audit a
+        WHERE a.symbol=i.symbol AND a.provider='YAHOO_UNOFFICIAL'
+        AND a.first_day>='{begin}' AND a.last_day<='{end}'
+        AND a.first_day<='{year}-12-31' AND a.last_day>='{year}-01-01'
+        AND a.first_day<>'{year}-01-01'::date
+      ) THEN 1 ELSE 0 END
       FROM members m JOIN instruments i ON i.id=m.instrument_id
-      LEFT JOIN candles c ON c.instrument_id=i.id AND c.day>='2026-01-01' AND c.day<='2026-11-13'
+      LEFT JOIN candles c ON c.instrument_id=i.id AND c.day>='{begin}' AND c.day<='{end}'
       GROUP BY i.id,i.symbol,i.currency ORDER BY i.symbol""")
     # A symbol may be present in both snapshots; the distinct set is
     # mandatory to prevent overwriting entries or biasing quota allocation.
     unique={}
     for record in rows.splitlines():
         cols=record.split("\t")
-        if len(cols)!=3:raise RuntimeError("Invalid catalog row")
-        symbol,currency,n=cols
+        if len(cols)!=4:raise RuntimeError("Invalid catalog row")
+        symbol,currency,n,audited=cols
         if not re.fullmatch(r"[A-Z0-9.^-]{1,24}",symbol):raise RuntimeError("Invalid ticker in catalog")
         if currency not in QUOTAS:raise RuntimeError("Unknown asset currency "+currency)
         if symbol in unique and unique[symbol][0]!=currency:
             raise RuntimeError("Ticker currency disagreement "+symbol)
-        unique[symbol]=(currency,max(int(n),unique.get(symbol,(currency,0))[1]))
-    pending=[(s,c,n) for s,(c,n) in sorted(unique.items())
-             if n<150]
+        previous=unique.get(symbol,(currency,0,False))
+        unique[symbol]=(currency,max(int(n),previous[1]),bool(int(audited)) or previous[2])
+    pending=[(s,c,n) for s,(c,n,audited) in sorted(unique.items())
+             if n<MIN_BARS and not audited]
     # Diversify Yahoo endpoint verification across all eight EXSA currencies.
     chosen=[];seen=set()
     for currency,quota in QUOTAS.items():
@@ -108,10 +123,10 @@ def candidates():
         for triple in group[:quota]:
             chosen.append(triple);seen.add(triple[0])
     for triple in pending:
-        if len(chosen)>=LIMIT:break
+        if len(chosen)>=limit:break
         if triple[0] not in seen:
             chosen.append(triple);seen.add(triple[0])
-    return chosen[:LIMIT],len(pending),len(unique)
+    return chosen[:limit],len(pending),len(unique)
 
 def backup():
     spec=importlib.util.spec_from_file_location("v41deployer",ROOT/"deploy_local.py")
@@ -133,8 +148,9 @@ def backup():
         if entries[name]!=actual:raise RuntimeError("Checksum mismatch "+name)
     return folder
 
-def token_request(token,symbol):
-    payload=json.dumps({"mode":"year","year":2026,"symbols":[symbol],"scheduled":False}).encode()
+def token_request(token,symbol,year=2026):
+    if year not in SUPPORTED_YEARS:raise ValueError("Unsupported year")
+    payload=json.dumps({"mode":"year","year":year,"symbols":[symbol],"scheduled":False}).encode()
     request=Request(API+"/api/market/sync",method="POST",data=payload,headers={
         "Content-Type":"application/json","x-app-token":token})
     try:
@@ -153,23 +169,25 @@ def token_request(token,symbol):
     if not isinstance(results,list) or len(results)!=1 or results[0].get("symbol")!=symbol:
         raise RuntimeError("Unexpected Yahoo result")
     item=results[0]
-    if not str(item.get("first","")).startswith("2026-") or not str(item.get("last","")).startswith("2026-") or int(item.get("count",0))<1:
+    if not str(item.get("first","")).startswith(f"{year}-") or not str(item.get("last","")).startswith(f"{year}-") or int(item.get("count",0))<1:
         raise RuntimeError("Unexpected year or empty candle import")
     return item
 
 def report(folder,value):
-    path=folder/"v4_1_batch_2026.json"
+    path=folder/f"v4_1_batch_{value['year']}.json"
     with path.open("x",encoding="utf-8") as fp:
         json.dump(value,fp,indent=2,ensure_ascii=False)
         fp.write("\n")
     path.chmod(0o600)
 
-def execute(*,apply=False):
+def execute(*,apply=False,year=2026,limit=LIMIT):
+    if year not in SUPPORTED_YEARS or not 1<=limit<=MAX_LIMIT:
+        raise ValueError("Unsupported year or batch capacity")
     guard()
-    selected,pending,unique=candidates()
-    overview={"status":"DRY_RUN","year":2026,"selected_count":len(selected),
+    selected,pending,unique=candidates(year,limit)
+    overview={"status":"DRY_RUN","year":year,"limit":limit,"selected_count":len(selected),
               "pending_count":pending,"unique_catalog":unique,
-              "chosen":[{"symbol":s,"currency":c,"existing_2026_bars":n} for s,c,n in selected],
+              "chosen":[{"symbol":s,"currency":c,"existing_bars":n} for s,c,n in selected],
               "scheduler":"PAUSED","paper":"PAPER_500_EUR"}
     if not apply:
         print(json.dumps(overview,ensure_ascii=False,indent=2))
@@ -187,16 +205,18 @@ def execute(*,apply=False):
     try:
         for index,(symbol,currency,old_count) in enumerate(selected,1):
             try:
-                result=token_request(token,symbol)
+                result=token_request(token,symbol,year)
+                start=f"{year}-01-01"
+                end="2026-11-13" if year==2026 else f"{year}-12-31"
                 saved=sql("SELECT count(*) FROM candles c JOIN instruments i "
                           "ON i.id=c.instrument_id WHERE i.symbol='"+symbol+
-                          "' AND c.day>='2026-01-01' AND c.day<='2026-11-13'")
+                          f"' AND c.day>='{start}' AND c.day<='{end}'")
                 if int(saved)<max(old_count,1):
                     raise RuntimeError("PostgreSQL candle count unexpectedly decreased")
                 overview["successful"].append({"symbol":symbol,"currency":currency,
                     "imported":result["count"],"stored":int(saved),
                     "first":result["first"],"last":result["last"]})
-                print(f"[{index}/{total}] {symbol}: {int(saved)} daily 2026 bars",flush=True)
+                print(f"[{index}/{total}] {symbol}: {int(saved)} daily {year} bars",flush=True)
             except Exception as error:
                 msg=str(error)[:350]
                 overview["blocked"].append({"symbol":symbol,"currency":currency,"reason":msg})
@@ -227,11 +247,13 @@ def execute(*,apply=False):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apply",action="store_true",help="Backup and import up to 24 previously incomplete 2026 symbols")
+    parser.add_argument("--apply",action="store_true",help="Backup and import bounded yearly PAPER candles")
+    parser.add_argument("--year",type=int,choices=SUPPORTED_YEARS,default=2026,help="Calendar year 2021..2026")
+    parser.add_argument("--limit",type=int,default=LIMIT,help=f"Maximum tickers in this call (1..{MAX_LIMIT})")
     args=parser.parse_args()
-    try:return execute(apply=args.apply)
+    try:return execute(apply=args.apply,year=args.year,limit=args.limit)
     except Exception as exc:
-        print("2026 BATCH BLOCKED:",str(exc)[:700],file=sys.stderr)
+        print("YEARLY BACKFILL BLOCKED:",str(exc)[:700],file=sys.stderr)
         return 1
 
 if __name__=="__main__":
