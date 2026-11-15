@@ -7,7 +7,7 @@ import {screenPaperCandidates} from '../src/paper-candidates.mjs';
 /** Purely server-side candidate computation; not a Next.js route export. */
 export async function computeCandidates(){
  const [scannerResponse,dashboardResponse,benchmark]=await Promise.all([
-  scanner(),dashboard(),
+  scanner(new Request('http://localhost/api/scanner?currency=EUR')),dashboard(),
   pool.query("SELECT c.day::text AS day FROM candles c JOIN instruments i ON i.id=c.instrument_id WHERE i.symbol='EXSA.DE' ORDER BY c.day DESC LIMIT 1")
  ]);
  if(!scannerResponse.ok||!dashboardResponse.ok)
