@@ -36,19 +36,39 @@ class BackfillFiveYearTests(unittest.TestCase):
         rows["AAPL"]=item("AAPL")
         state={"version":1,"completed":{},"blocked":{}}
         self.assertEqual([v["symbol"] for v in m.available(rows,state)],["AAPL"])
-        self.assertEqual(len(m.available(rows,state,retry_blocked=True)),7)
+        self.assertEqual(len(m.available(rows,state,retry_blocked=True)),1)
         self.assertEqual(sum(len(v) for v in m.KNOWN_OHLCV_QUARANTINE.values()),10)
         self.assertEqual(len(m.KNOWN_OHLCV_QUARANTINE),6)
 
-    def test_balanced_across_eight_currencies(self):
+    def test_weighted_eur_usd_only_even_across_large_waves(self):
         rows=[]
         for currency in m.CURRENCIES:
-            rows.extend([item(currency+str(i).zfill(3),currency) for i in range(60)])
-        chosen=m.balanced(rows,48)
-        self.assertEqual(len(chosen),48)
-        self.assertEqual(len({x["symbol"] for x in chosen}),48)
-        for currency,n in m.QUOTAS.items():
-            self.assertGreaterEqual(sum(x["currency"]==currency for x in chosen),n)
+            rows.extend([item(currency+str(i).zfill(3),currency) for i in range(200)])
+        chosen=m.balanced(rows,180)
+        self.assertEqual(len(chosen),180)
+        self.assertEqual(len({x["symbol"] for x in chosen}),180)
+        self.assertEqual({x["currency"] for x in chosen},{"USD","EUR"})
+        self.assertEqual(sum(x["currency"]=="USD" for x in chosen),104)
+        self.assertEqual(sum(x["currency"]=="EUR" for x in chosen),76)
+
+    def test_available_rejects_non_target_currencies_even_explicit_retry(self):
+        rows={c:item("CURRENCY"+c,c) for c in m.CURRENCIES}
+        state={"version":1,"completed":{},"blocked":{}}
+        self.assertEqual({r["currency"] for r in m.available(rows,state)},
+                         {"USD","EUR"})
+        self.assertEqual({r["currency"] for r in m.available(rows,state,retry_blocked=True)},
+                         {"USD","EUR"})
+
+    def test_excluded_currencies_are_not_requested_in_execute(self):
+        rows={"AAPL":item("AAPL","USD"),"AC.PA":item("AC.PA","EUR"),
+              "BP.L":item("BP.L","GBP")}
+        with patch.object(m,"guards"),patch.object(m,"catalog_rows",return_value=rows),\
+             patch.object(m,"load_state",return_value={"version":1,"completed":{},"blocked":{}}),\
+             patch.object(m,"verified_backup") as save,\
+             patch.object(m,"request_5y") as request:
+            self.assertEqual(m.execute(limit=10),0)
+        save.assert_not_called()
+        request.assert_not_called()
 
     def test_last_week_provider_error_is_temporarily_skipped_not_hidden(self):
         entries={"AAPL":item("AAPL"),"MSFT":item("MSFT")}
