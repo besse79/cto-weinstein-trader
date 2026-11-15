@@ -4,7 +4,16 @@ export async function GET(){
  try {
   const initial=Number((await pool.query("SELECT value FROM settings WHERE key='initial_cash'")).rows[0]?.value ?? 500);
   const orders=(await pool.query("SELECT o.*,i.symbol,i.name FROM orders o JOIN instruments i ON i.id=o.instrument_id ORDER BY o.id")).rows;
-  const candles=(await pool.query("SELECT DISTINCT ON (instrument_id) instrument_id,day::text AS day,close::float8 AS close FROM candles ORDER BY instrument_id,day DESC")).rows;
+  // Index-backed last bar per instrument. The previous DISTINCT ON scanned
+  // and sorted every daily candle (over 1M bars on the real WSL universe).
+  // No schema change: candles already has PRIMARY KEY(instrument_id,day).
+  const candles=(await pool.query(`SELECT i.id AS instrument_id,
+     c.day::text AS day,c.close::float8 AS close
+    FROM instruments i
+    JOIN LATERAL (
+      SELECT day,close FROM candles
+      WHERE instrument_id=i.id ORDER BY day DESC LIMIT 1
+    ) c ON TRUE`)).rows;
   const last=new Map<number,{day:string,close:number}>(candles.map(c=>[Number(c.instrument_id),{day:c.day,close:Number(c.close)}]));
   const stops=(await pool.query("SELECT * FROM risk_stops")).rows;
   const stopMap=new Map<number,number>(stops.map(s=>[Number(s.instrument_id),Number(s.current_stop)]));
