@@ -69,6 +69,7 @@ test('invalid MKD data must not fallback silently',async()=>{
 });
 test('MKD origin refuses external plaintext or embedded passwords',()=>{
  assert.equal(checkedBaseUrl('http://mkd:8000'),'http://mkd:8000');
+ assert.equal(checkedBaseUrl('http://host.docker.internal:8000'),'http://host.docker.internal:8000');
  assert.throws(()=>checkedBaseUrl('http://evil.example:8000'),/cleartext/);
  assert.throws(()=>checkedBaseUrl('https://a:b@example.org'),/clean/);
 });
