@@ -43,12 +43,15 @@ def paper_hash():
       (SELECT COALESCE(string_agg(row_to_json(s)::text,'|' ORDER BY key),'') FROM settings s)
     )""")
 
-def dashboard():
-    with urlopen(API+"/api/dashboard",timeout=15) as response:
-        result=json.load(response)
-    if result.get("mode")!="PAPER" or result.get("initial")!=500:
-        raise RuntimeError("Expected PAPER account with EUR 500 initial capital")
-    return result
+def check_paper_settings():
+    # /api/dashboard calculates latest prices for the full stock universe,
+    # which can exceed the HTTP deadline after >800 instruments are backfilled.
+    # Reading three literal settings is both faster and safer for this guard.
+    settings=sql("SELECT key||'='||value FROM settings WHERE key IN "
+                 "('account_type','initial_cash','paper_only') ORDER BY key").splitlines()
+    if settings!=["account_type=CTO","initial_cash=500","paper_only=true"]:
+        raise RuntimeError("PAPER 500 EUR / CTO settings mismatch; market update blocked")
+    return True
 
 def guard():
     if date.today().isoformat() not in ("2026-11-15","2026-11-16"):
@@ -57,7 +60,7 @@ def guard():
         raise RuntimeError("Run from installed WSL paper app directory")
     if docker("--profile","automation","ps","-q","scheduler"):
         raise RuntimeError("Automatic collector not paused")
-    dashboard()
+    check_paper_settings()
     observation=sql("""SELECT index_code||':'||count(*) FROM index_constituent_observations
       WHERE (index_code='SP500' AND observed_on='2026-11-14') OR
             (index_code='STOXX600_ETF_PROXY' AND observed_on='2026-11-12')
@@ -136,7 +139,9 @@ def sync_benchmarks(key):
     return found
 
 def paper_candidates():
-    with urlopen(API+"/api/paper-candidates",timeout=100) as response:
+    # Full-universe Weinstein calculations can be expensive after backfill.
+    # Timeout here must NOT be mistaken for failed, already-committed candles.
+    with urlopen(API+"/api/paper-candidates",timeout=25) as response:
         data=json.load(response)
     if data.get("mode")!="PAPER" or data.get("benchmarkDay")!=TARGET:
         raise RuntimeError("Paper candidate screen does not acknowledge Friday benchmark")
@@ -149,11 +154,22 @@ def paper_candidates():
             "order_allowed_symbols":[c.get("symbol") for c in eligible
                                      if c.get("orderAllowed") is True]}
 
+def inspect_candidates():
+    try:
+        return {"status":"SCREEN_READ","data":paper_candidates()}
+    except Exception as exc:
+        # Screening is READ ONLY; preserve the benchmark import result but
+        # fail closed for trading decisions if it cannot be verified.
+        return {"status":"SCREEN_PENDING","reason":str(exc)[:350],
+                "eligible_count_verified":False,"orders_allowed":False}
+
 def emit(value):
-    print(json.dumps(value,ensure_ascii=False,indent=2))
+    print(json.dumps(value,ensure_ascii=False,indent=2),flush=True)
 
 def execute(apply=False):
+    print("Preflight: PAPER settings and paused scheduler...",flush=True)
     guard()
+    print("Preflight: PAPER/CTO settings verified directly in PostgreSQL",flush=True)
     before=latest_benchmarks()
     if not apply:
         emit({"status":"DRY_RUN","target":TARGET,
@@ -161,19 +177,23 @@ def execute(apply=False):
               "paper":"500_EUR","actions":"NONE"})
         return 0
     if all(row["last"]==TARGET for row in before.values()):
-        c=paper_candidates()
-        emit({"status":"BENCHMARKS_ALREADY_CURRENT","before":before,
-              "after":before,"paper_candidates":c,"paper_unchanged":True,
-              "scheduler":"PAUSED","orders_placed":False})
+        inspected=inspect_candidates()
+        emit({"status":"BENCHMARKS_ALREADY_CURRENT" if
+              inspected["status"]=="SCREEN_READ" else "BENCHMARKS_ALREADY_CURRENT_SCREEN_PENDING",
+              "before":before,"after":before,"candidate_screen":inspected,
+              "paper_unchanged":True,"scheduler":"PAUSED","orders_placed":False})
         return 0
     original=paper_hash()
     key=token()
     folder=verified_backup()
+    print("Verified pre-import backup:",folder,flush=True)
     report={"status":"RUNNING","backup":str(folder),"target":TARGET,
             "before":before,"after":None,"sync":None,
             "scheduler":"PAUSED","orders_placed":False}
     try:
+        print("Syncing only EXSA.DE and SPY (Yahoo 3mo daily)...",flush=True)
         report["sync"]=sync_benchmarks(key)
+        print("Yahoo atomic benchmark sync returned; verifying PostgreSQL...",flush=True)
         after=latest_benchmarks()
         report["after"]=after
         for symbol in SYMBOLS:
@@ -184,11 +204,13 @@ def execute(apply=False):
             if before[symbol]["first"] and after[symbol]["first"]>before[symbol]["first"]:
                 raise RuntimeError("Historical benchmark earliest bar lost: "+symbol)
         if paper_hash()!=original:raise RuntimeError("PAPER orders/stops/settings changed")
-        dashboard()
-        report["paper_candidates"]=paper_candidates()
-        if paper_hash()!=original:raise RuntimeError("PAPER account changed during screening")
+        check_paper_settings()
         report["paper_unchanged"]=True
-        report["status"]="FRIDAY_BENCHMARKS_COMPLETE"
+        report["candidate_screen"]=inspect_candidates()
+        if paper_hash()!=original:raise RuntimeError("PAPER orders/stops/settings changed during screening")
+        report["status"]=("FRIDAY_BENCHMARKS_COMPLETE" if
+            report["candidate_screen"]["status"]=="SCREEN_READ"
+            else "FRIDAY_BENCHMARKS_COMPLETE_SCREEN_PENDING")
     except Exception as exc:
         report["status"]="FRIDAY_BENCHMARKS_BLOCKED"
         report["reason"]=str(exc)[:500]
@@ -197,7 +219,8 @@ def execute(apply=False):
     path.write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     path.chmod(0o600)
     emit(report)
-    return 0 if report["status"]=="FRIDAY_BENCHMARKS_COMPLETE" else 1
+    return 0 if report["status"] in (
+        "FRIDAY_BENCHMARKS_COMPLETE","FRIDAY_BENCHMARKS_COMPLETE_SCREEN_PENDING") else 1
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
