@@ -193,6 +193,12 @@ jobs:
         run: |
           docker compose -p cto_weinstein exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader -c "INSERT INTO instruments(symbol,name,currency) SELECT 'CISCALE' || g::text,'Synthetic scale fixture ' || g::text,'EUR' FROM generate_series(1,1105) g ON CONFLICT DO NOTHING"
           curl -fsS --max-time 30 http://127.0.0.1:3010/api/scanner | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["results"])>=1100 and all(x["eligible"] is False for x in d["results"] if x["symbol"].startswith("CISCALE")),d.get("error")'
+      - name: Verify EUR-only PAPER scanner and portfolio dashboard remain responsive
+        run: |
+          curl -fsS --max-time 30 'http://127.0.0.1:3010/api/scanner?currency=EUR' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["results"] and all(x["currency"]=="EUR" for x in d["results"]),d.get("error")'
+          curl -fsS --max-time 30 'http://127.0.0.1:3010/api/paper-candidates' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initialCash"]==500 and d["eligibleCount"]==0 and all(x["currency"]=="EUR" for x in d["candidates"]),d.get("error")'
+          curl -fsS --max-time 30 'http://127.0.0.1:3010/api/dashboard' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500 and len(d["signals"])>=1105,d.get("error")'
+          test "$(docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc 'SELECT COUNT(*) FROM orders')" = 0
       - name: Verify rollback archive without modifying database
         run: |
           latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
