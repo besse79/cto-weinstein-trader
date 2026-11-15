@@ -29,8 +29,11 @@ ROOT=Path.cwd().resolve()
 API="http://127.0.0.1:3010"
 STATE_DIR=Path.home()/"cto-weinstein-backfill"
 STATE_FILE=STATE_DIR/"v4_1_rolling5y.json"
+# Keep the full historical catalog in PostgreSQL, but only collect assets
+# tradeable by the planned dual-currency EUR/USD PAPER portfolio.
 CURRENCIES=("USD","EUR","GBP","CHF","SEK","DKK","NOK","PLN")
-QUOTAS={"USD":8,"EUR":6,"GBP":3,"CHF":2,"SEK":2,"DKK":1,"NOK":1,"PLN":1}
+TARGET_CURRENCIES=("USD","EUR")
+QUOTAS={"USD":8,"EUR":6}
 INDEX_DAYS={"SP500":"2026-11-14","STOXX600_ETF_PROXY":"2026-11-12"}
 EXPECTED_COUNTS={"SP500":503,"STOXX600_ETF_PROXY":602}
 PROVIDER="YAHOO_UNOFFICIAL"
@@ -167,6 +170,9 @@ def available(rows,state,*,retry_blocked=False):
     now=date.today()
     pending=[]
     for symbol,item in rows.items():
+        # GBP, CHF, SEK, DKK, NOK and PLN are not targets for the EUR/USD
+        # portfolio; never fetch them, even with --retry-blocked.
+        if item["currency"] not in TARGET_CURRENCIES:continue
         if item["audited_5y"]:continue
         if symbol in KNOWN_OHLCV_QUARANTINE and not retry_blocked:
             continue
@@ -190,17 +196,25 @@ def available(rows,state,*,retry_blocked=False):
     return pending
 
 def balanced(pending,limit):
-    groups={c:[] for c in CURRENCIES}
-    for row in pending:groups[row["currency"]].append(row)
-    result=[]
-    selected=set()
-    for c,quota in QUOTAS.items():
-        for row in groups[c][:min(quota,limit-len(result))]:
-            result.append(row);selected.add(row["symbol"])
+    # Weighted fair rotation: maintain USD/EUR coverage across large waves.
+    groups={c:[] for c in TARGET_CURRENCIES}
     for row in pending:
-        if len(result)>=limit:break
-        if row["symbol"] not in selected:
-            result.append(row);selected.add(row["symbol"])
+        if row["currency"] in TARGET_CURRENCIES:
+            groups[row["currency"]].append(row)
+    result=[]
+    offsets={c:0 for c in TARGET_CURRENCIES}
+    while len(result)<limit:
+        advanced=False
+        for currency,quota in QUOTAS.items():
+            offset=offsets[currency]
+            group=groups[currency]
+            take=min(quota,limit-len(result),len(group)-offset)
+            if take>0:
+                result.extend(group[offset:offset+take])
+                offsets[currency]+=take
+                advanced=True
+            if len(result)>=limit:break
+        if not advanced:break
     return result
 
 def get_token():
@@ -281,8 +295,13 @@ def execute(*,apply=False,limit=48,retry_blocked=False):
     state=load_state()
     pending=available(catalog,state,retry_blocked=retry_blocked)
     selected=balanced(pending,limit)
+    target=[x for x in catalog.values() if x["currency"] in TARGET_CURRENCIES]
+    excluded=len(catalog)-len(target)
     info={"status":"DRY_RUN","catalog_unique":len(catalog),
-          "verified_5y_in_db":sum(x["audited_5y"] for x in catalog.values()),
+          "target_currencies":list(TARGET_CURRENCIES),
+          "target_catalog":len(target),
+          "excluded_other_currencies":excluded,
+          "verified_5y_in_db":sum(x["audited_5y"] for x in target),
           "pending_before_limit":len(pending),"selected":len(selected),
           "symbols":[{"symbol":x["symbol"],"currency":x["currency"],"prior_bars":x["bars"]} for x in selected],
           "mode":"PAPER","scheduler":"PAUSED","source":"YAHOO_UNOFFICIAL_RANGE_5Y",
@@ -356,6 +375,9 @@ def execute(*,apply=False,limit=48,retry_blocked=False):
     atomic_json(STATE_FILE,state)
     atomic_json(report,info)
     summary={"status":info["status"],"catalog_unique":info["catalog_unique"],
+             "target_currencies":info["target_currencies"],
+             "target_catalog":info["target_catalog"],
+             "excluded_other_currencies":info["excluded_other_currencies"],
              "verified_before":info["verified_5y_in_db"],
              "selected":info["selected"],"full_5y_imported":len(info["successful"]),
              "short_history_imported":len(info["short_history"]),
@@ -372,7 +394,7 @@ def execute(*,apply=False,limit=48,retry_blocked=False):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--limit",type=int,default=48,help="One execution, 1..1105 symbols; default 48")
+    p.add_argument("--limit",type=int,default=48,help="One execution, 1..1105 symbols (EUR/USD only); default 48")
     p.add_argument("--apply",action="store_true",help="Backup then import in bounded foreground requests")
     p.add_argument("--retry-blocked",action="store_true",
                    help="Explicitly retry failed tickers, including source-quarantined cases; no data validation is relaxed")
