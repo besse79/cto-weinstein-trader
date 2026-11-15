@@ -3,7 +3,7 @@ on:
   push:
     branches: [develop, main]
   pull_request:
-    branches: [develop]
+    branches: [develop, feature/v4-1-universe-collection]
 concurrency:
   group: application-ci-${{ github.ref }}
   cancel-in-progress: true
