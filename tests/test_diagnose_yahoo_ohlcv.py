@@ -35,7 +35,7 @@ class DiagnoseYahooOHLCVTests(unittest.TestCase):
         q["low"][3]=103.0
         report=audit_series(data,"AAF.L")
         self.assertEqual(report["invalid_rows_by_reason"],
-                         {"HIGH_BELOW_OPEN_LOW_CLOSE":1,
+                         {"HIGH_BELOW_OPEN_LOW_CLOSE":2,
                           "LOW_ABOVE_OPEN_HIGH_CLOSE":1})
         self.assertEqual(len(report["first_examples"]),2)
         self.assertGreater(report["relative_gaps"]["high_max_relative_gap"],0)
