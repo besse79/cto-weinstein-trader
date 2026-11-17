@@ -38,7 +38,7 @@ export async function fetchMkdLegacy(symbol,{start='2021-01-01',end=new Date().t
  if(!symbolPattern.test(symbol)||!datePattern.test(start)||!datePattern.test(end)||start>end)
   throw Error('Invalid symbol or date range');
  const info=await getJson('/v1/legacy/resolve?symbol='+encodeURIComponent(symbol),fetchImpl);
- if(info.symbol!==symbol||!info.instrument_id||!['EUR','USD'].includes(info.currency))
+ if(info.symbol!==symbol||!info.instrument_id||!(/^[A-Z]{3}$/.test(info.currency)))
   throw Error('MKD symbol mapping mismatch');
  const items=[];
  // MKD caps each request at 1,000 rows. Calendar-year slices are <= 366 daily bars.
