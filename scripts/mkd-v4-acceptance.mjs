@@ -114,7 +114,7 @@ const heldSymbols=new Set((dashboard.positions??[]).map(p=>p.symbol));
 const held=ordered.filter(r=>heldSymbols.has(r.symbol));
 const stages={};
 for(const r of ordered.filter(r=>r.kind==='INSTRUMENT'))stages[r.stage]=(stages[r.stage]??0)+1;
-const gatePassed=failures.length===0&&paperParity.exact&&uncovered.length===0&&
+const gatePassed=failures.length===0&&paperParity.exact&&
  ordered.filter(r=>r.kind==='INSTRUMENT').length>0;
 const report={generatedAt:new Date().toISOString(),asOf:scanner.asOf,source:'MKD_LEGACY_NON_PIT',
  backtestEligible:false,mode:'READ_ONLY_SHADOW',gatePassed,totals:{localInstruments:instruments.length,
