@@ -62,7 +62,10 @@ async function worker(){
    if(mkd.currency!==i.currency)throw Error('Currency mismatch');
    const c=compareCandleSeries(local,mkd.items);
    const benchmark=benchmarkData.get(i.currency);
-   if(!benchmark)throw Error('Benchmark missing for '+i.currency);
+   if(!benchmark){
+    results.push({symbol:i.symbol,kind:'OHLCV_ONLY_NO_BENCHMARK',currency:i.currency,localBars:c.localBars,mkdBars:c.mkdBars,exact:c.exact,missingLocal:c.missingInLocal.length,missingMkd:c.missingInMkd.length,different:c.different.length,signalValidated:false});
+    continue;
+   }
    const raw=scanWeinstein(mkd.items,{asOf:scanner.asOf,benchmarkDaily:benchmark.bars});
    const explained=explainSetup({...raw,lastClose:raw.lastCompletedClose});
    const last=mkd.items.at(-1);
@@ -92,6 +95,7 @@ await Promise.all(Array.from({length:maxConcurrency},()=>worker()));
 const ordered=results.sort((a,b)=>a.symbol.localeCompare(b.symbol));
 const failures=ordered.filter(r=>r.kind==='ERROR'||(r.exact===false)||(r.signalExact===false));
 const uncovered=ordered.filter(r=>r.kind==='NO_HISTORY');
+const ohlcvOnly=ordered.filter(r=>r.kind==='OHLCV_ONLY_NO_BENCHMARK');
 const shadowScanner={...scanner,results:scanner.results.map(r=>mkdScan.get(r.symbol)??r)};
 const benchmarkDay=benchmarkData.get('EUR')?.bars.at(-1)?.day??null;
 let paperParity={exact:false,error:'Not executed'};
@@ -118,10 +122,10 @@ const gatePassed=failures.length===0&&paperParity.exact&&
  ordered.filter(r=>r.kind==='INSTRUMENT').length>0;
 const report={generatedAt:new Date().toISOString(),asOf:scanner.asOf,source:'MKD_LEGACY_NON_PIT',
  backtestEligible:false,mode:'READ_ONLY_SHADOW',gatePassed,totals:{localInstruments:instruments.length,
- compared:ordered.filter(r=>r.kind==='INSTRUMENT').length,uncovered:uncovered.length,
+ compared:ordered.filter(r=>r.kind==='INSTRUMENT').length,uncovered:uncovered.length,ohlcvOnly:ohlcvOnly.length,
  failures:failures.length,stages},held,portfolio:{cash:dashboard.cash,equity:dashboard.equity,
  positions:(dashboard.positions??[]).map(p=>({symbol:p.symbol,qty:p.qty,stop:p.stop,alert:p.alert})),
- paperParity},failures,uncovered,results:ordered};
+ paperParity},failures,uncovered,ohlcvOnly,results:ordered};
 mkdirSync(reportDir,{recursive:true});
 const filename=reportDir+'/mkd-acceptance-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
 writeFileSync(filename,JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
