@@ -45,7 +45,7 @@ async function audit(symbol){
     throw Error('Legacy provenance contract violation');
    let previous='';
    for(const b of page.items){
-    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(b.date)||b.date<start||b.date>end||b.date<=previous||
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(b.date)||b.date<start||b.date>end||b.date<=previous||
       b.currency!==mapping.currency||b.provider!=='yahoo'||b.quality_status!=='legacy_unverified')
      throw Error('Invalid bar provenance/date/currency');
     previous=b.date;count++;
@@ -66,8 +66,8 @@ const counts={};
 for(const r of rows)counts[r.status]=(counts[r.status]??0)+1;
 const report={generatedAt:new Date().toISOString(),input:resolve(file),source:'MKD_LEGACY_NON_PIT',
  readOnly:true,backtestEligible:false,uncoveredExpected:symbols.length,counts,rows};
-const output=file.replace(/\\.json$/,'-mkd-uncovered-audit.json');
+const output=file.replace(/\.json$/,'-mkd-uncovered-audit.json');
 if(output===file)throw Error('Input filename must end in .json');
-writeFileSync(output,JSON.stringify(report,null,2)+'\\n',{flag:'wx',mode:0o600});
+writeFileSync(output,JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
 console.log(JSON.stringify({report:output,total:symbols.length,counts,samples:rows.filter(r=>r.status!=='MKD_BARS_AVAILABLE').slice(0,15)},null,2));
 if(counts.AUDIT_ERROR||counts.MAPPING_INVALID)process.exitCode=2;
