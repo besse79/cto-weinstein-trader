@@ -32,7 +32,16 @@ sql = """BEGIN TRANSACTION READ ONLY;
 COPY (
  SELECT m.symbol, m.instrument_id::text, COALESCE(m.currency,''), COALESCE(m.name,''),
         COALESCE(count(b.id),0), COALESCE(min(b.session_date)::text,''), COALESCE(max(b.session_date)::text,'')
- FROM legacy_symbol_map m
+ FROM (
+    SELECT symbol, instrument_id, currency, name FROM legacy_symbol_map
+    UNION ALL
+    SELECT i.symbol, i.instrument_id, i.currency, ins.name
+    FROM instrument_identifiers i JOIN instruments ins ON ins.id=i.instrument_id
+    WHERE NOT EXISTS (
+      SELECT 1 FROM legacy_symbol_map lm WHERE upper(lm.symbol)=upper(i.symbol)
+        AND lm.instrument_id=i.instrument_id
+    )
+ ) m
  LEFT JOIN eod_bars b ON b.instrument_id=m.instrument_id AND b.provider='yahoo' AND b.quality_status='legacy_unverified'
  GROUP BY m.symbol,m.instrument_id,m.currency,m.name
 ) TO STDOUT WITH (FORMAT CSV, HEADER TRUE);
@@ -56,7 +65,7 @@ for symbol in symbols:
         status = "EXACT_WITH_BARS" if int(hits[0]["count"]) else "EXACT_WITHOUT_BARS"
         action = "Review source discrepancy" if status == "EXACT_WITH_BARS" else "Schedule collection after validation"
     else:
-        status, action = "ABSENT_FROM_LEGACY_MAP", "Review identifiers and plan targeted collection"
+        status, action = "ABSENT_FROM_MKD_IDENTIFIERS", "Review identifiers and plan targeted collection"
     result.append({"symbol":symbol,"status":status,"action":action,"matches":hits})
 counts = dict(Counter(x["status"] for x in result))
 output = source.with_name(source.stem + "-reconciliation.json")
@@ -64,7 +73,7 @@ if output.exists():
     output = source.with_name(source.stem + "-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-reconciliation.json")
 data = {"generatedAt":datetime.now(timezone.utc).isoformat(),"readOnly":True,"backtestEligible":False,
         "mappingRows":len(rows),"requested":len(symbols),"counts":counts,"rows":result,
-        "note":"No fuzzy matches inferred. ABSENT_FROM_LEGACY_MAP does not prove absent from all MKD tables."}
+        "note":"No fuzzy matches inferred. ABSENT_FROM_LEGACY_MAP does not prove missing historical data under alternate tickers."}
 with output.open("x") as f:
     json.dump(data,f,indent=2)
 print(json.dumps({"report":str(output),"mappingRows":len(rows),"requested":len(symbols),"counts":counts},indent=2))
