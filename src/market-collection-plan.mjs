@@ -17,8 +17,8 @@ export function selectMarketBatches(instruments,kind,day,{maxSymbols=144}={}){
   if(!x||typeof x.symbol!=='string'||seen.has(x.symbol)||
    !/^[A-Z0-9.^-]{1,24}$/.test(x.symbol))return false;
   seen.add(x.symbol);
-  if(!['EUR','USD'].includes(x.currency))return false;
-  if(kind==='EU_CLOSE'&&x.currency!=='EUR')return false;
+  if(!['EUR','USD','GBP','CHF','SEK','DKK','NOK','PLN'].includes(x.currency))return false;
+  if(kind==='EU_CLOSE'&&x.currency==='USD')return false;
   if(kind==='US_CLOSE'&&x.currency!=='USD')return false;
   if(kind==='BOOTSTRAP'&&Number(x.bars)>=250&&age(x.last_day)>=0&&age(x.last_day)<4)return false;
   return true;
@@ -28,7 +28,11 @@ export function selectMarketBatches(instruments,kind,day,{maxSymbols=144}={}){
  const primary=rows.filter(x=>x.symbol==='EXSA.DE'||x.symbol==='SPY');
  const rest=rows.filter(x=>!primary.includes(x)).sort((a,b)=>a.symbol.localeCompare(b.symbol));
  const ordinal=Math.floor(Date.parse(day+'T12:00:00Z')/86400000);
- const offset=kind==='BOOTSTRAP'?0:rest.length?ordinal%rest.length:0;
+ // Advance by a full batch of secondary symbols per market day. Advancing by
+ // one ticker would require months to revisit a large 1,100-symbol universe.
+ // BOOTSTRAP also rotates to avoid starving symbols behind persistent failures.
+ const secondaryCapacity=Math.max(1,maxSymbols-primary.length);
+ const offset=rest.length?(ordinal*secondaryCapacity)%rest.length:0;
  const rotated=rest.slice(offset).concat(rest.slice(0,offset));
  const selected=primary.concat(rotated).slice(0,maxSymbols);
  const groups=[];

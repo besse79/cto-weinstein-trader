@@ -18,7 +18,13 @@ export function screenPaperCandidates(scanner,dashboard,{
  if(!parseDay(asOf)||!Array.isArray(scanner?.results)||
   !Number.isFinite(dashboard?.cash)||!Number.isFinite(dashboard?.equity)||
   !Number.isFinite(fee)||fee<0)throw Error('Invalid paper screening input');
- const previousMonday=new Date(Date.parse(weeksMonday(asOf)+'T12:00:00Z')-7*86400000)
+ // A completed Friday can be screened immediately on Saturday/Sunday.
+ // On Mon-Fri, use the prior calendar week; the current week is still open
+ // to avoid trading on partial Friday data. This preserves Monday entries.
+ const weekday=new Date(asOf+'T12:00:00Z').getUTCDay();
+ const orderWindowOpen=weekday>=1&&weekday<=5;
+ const completedMondayOffset=(weekday===0||weekday===6)?0:7;
+ const previousMonday=new Date(Date.parse(weeksMonday(asOf)+'T12:00:00Z')-completedMondayOffset*86400000)
   .toISOString().slice(0,10);
  const age=day=>parseDay(day)?(Date.parse(asOf+'T12:00:00Z')-Date.parse(day+'T12:00:00Z'))/86400000:Infinity;
  // Without a verified prior Friday candle, the prior ISO week may only
@@ -59,17 +65,20 @@ export function screenPaperCandidates(scanner,dashboard,{
    relativeStrength:x.relativeStrength??null,volumeRatio:x.volumeRatio??null,
    watchScore:x.watchScore??null,quantity:reasons.length?0:(allocation?.quantity??0),
    maxPlannedLoss:reasons.length?null:allocation.maxPlannedLoss,
-   fee,eligible:reasons.length===0,reasons};
+   fee,eligible:reasons.length===0,
+   orderAllowed:reasons.length===0&&orderWindowOpen,
+   orderReasons:!orderWindowOpen?['MARKET_CLOSED_WEEKEND']:[],reasons};
  }).sort((a,b)=>Number(b.eligible)-Number(a.eligible)||
   (b.relativeStrength??-Infinity)-(a.relativeStrength??-Infinity)||
   a.symbol.localeCompare(b.symbol));
  return {mode:'PAPER',asOf,initialCash:dashboard.initial,
   cash:dashboard.cash,equity:dashboard.equity,positionsOpen:positions.length,
   benchmarkDay,benchmarkFresh,signalWeekExpected:previousMonday,
+  orderWindowOpen,weekendResearchOnly:!orderWindowOpen,
   eligibleCount:candidates.filter(x=>x.eligible).length,
   candidates,limitations:[
    'The indicated purchase price is the last stored completed daily CLOSE, never a live opening quote.',
-   'User must explicitly confirm a fictional close-price fill. No broker connection or order scheduling.',
+   'User must explicitly confirm a fictional close-price fill on a weekday. Weekend candidates are research-only; orders are blocked.',
    'No FX conversion: USD stocks cannot be bought before reliable historical rates exist.',
    'Without a phase-2 breakout confirmed in the immediately preceding completed week, no purchase.',
    'The 1% stop risk is theoretical and may be exceeded by gaps or execution differences.'

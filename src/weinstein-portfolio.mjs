@@ -1,15 +1,10 @@
-import {aggregateWeeks} from './weinstein.mjs';
+import {aggregateWeeks,completedWeekCutoff} from './weinstein.mjs';
 import {analyzeHistoricalPhases} from './weinstein-history.mjs';
 import {sizePaperPosition,simulateLongStop} from './paper-risk.mjs';
 
 const NEXT_WEEK=7*86400000;
 const mondayAfter=week=>new Date(Date.parse(week+'T12:00:00Z')+NEXT_WEEK).toISOString().slice(0,10);
-const mondayAt=asOf=>{
- const date=new Date(asOf+'T12:00:00Z');
- if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf)||!Number.isFinite(+date))throw Error('Invalid asOf');
- date.setUTCDate(date.getUTCDate()-(date.getUTCDay()+6)%7);
- return date.toISOString().slice(0,10);
-};
+const mondayAt=asOf=>completedWeekCutoff(asOf);
 const round=x=>Math.round(x*1000000)/1000000;
 
 /**
@@ -24,7 +19,7 @@ export function backtestWeinsteinPortfolio(instruments,benchmarkDaily,{
  fee=0.5,slippageFraction=0.001,maxPositions=4,
  riskFraction=0.01,maxAllocationFraction=0.25
 }={}){
- if(!Array.isArray(instruments)||instruments.length>150||
+ if(!Array.isArray(instruments)||instruments.length>750||
   !Number.isFinite(initialCash)||initialCash<=0||![4,8,12,26].includes(holdWeeks)||
   !Number.isInteger(maxPositions)||maxPositions<1||maxPositions>10||
   ![fee,slippageFraction,riskFraction,maxAllocationFraction].every(Number.isFinite)||

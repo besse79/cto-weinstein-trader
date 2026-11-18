@@ -130,9 +130,11 @@ jobs:
           exit 1
       - name: Verify Yahoo import, currency benchmarks and refusal on invalid ticker
         run: node tests/yahoo-e2e.mjs
+      - name: Verify isolated 2025 year-window Yahoo backfill preserves PAPER account
+        run: node tests/yahoo-year-e2e.mjs
       - name: Verify failed import did not create audit entries
         run: |
-          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 9
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 10
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM orders" | grep -Fx 0
       - name: Test automated history recovery on isolated Yahoo mock
         run: |
@@ -141,7 +143,7 @@ jobs:
           docker compose --profile automation run --rm scheduler node scripts/market-scheduler.mjs --once
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_job_runs WHERE job_type='BOOTSTRAP' AND status='SUCCESS'" | grep -Fx 1
           docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM candles WHERE instrument_id=(SELECT id FROM instruments WHERE symbol='AC.PA')" | awk '{if ($1<600) exit 1}'
-          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 10
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 11
       - name: Diagnostics
         if: failure()
         run: |
@@ -156,7 +158,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify Python syntax
-        run: python3 -m py_compile deploy_local.py restore.py scripts/validate_yahoo.py
+        run: python3 -m py_compile deploy_local.py restore.py scripts/validate_yahoo.py scripts/import_index_universe.py scripts/prepare_sp500_snapshot.py scripts/fetch_sp500_preview.py scripts/v4_release_gate.py scripts/prepare_exsa_holdings_preview.py scripts/fetch_exsa_preview.py scripts/v4_1_universe_preflight.py scripts/stage_v4_universe.py scripts/release_v4_1.py scripts/pilot_history_2026.py scripts/batch_history_2026.py scripts/pilot_5y_history.py scripts/backfill_5y_universe.py scripts/diagnose_yahoo_ohlcv.py scripts/check_eurusd_readiness.py scripts/refresh_benchmarks_20261113.py scripts/audit_paper_selection_20261116.py
+      - name: Validate V4.1 constituent importer without connecting to a database
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check host prerequisites without changing state
         run: python3 deploy_local.py --check
       - name: Start CTO application with local installer
@@ -166,6 +170,9 @@ jobs:
       - name: Verify paper dashboard
         run: |
           curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
+      - name: Verify empty index-universe status without imported licensed snapshots
+        run: |
+          curl -fsS http://127.0.0.1:3010/api/market/universe-coverage | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="NOT_IMPORTED" and d["indices"]==[]'
       - name: Run installer again to produce verified PostgreSQL backup
         run: python3 deploy_local.py
       - name: Verify 26-instrument universe added idempotently
@@ -176,6 +183,22 @@ jobs:
       - name: Verify EUR benchmark migrated exactly once
         run: |
           docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments WHERE symbol='EXSA.DE' AND currency='EUR'" | grep -Fx 1
+      - name: Verify index snapshot import and membership coverage on isolated CI PostgreSQL
+        run: |
+          printf 'index_code,symbol,name,currency\nSP500,CITESTUS,Synthetic US,USD\nSTOXX600_ETF_PROXY,CITESTEU.PA,Synthetic EU,EUR\n' > /tmp/cto-universe-ci.csv
+          python3 scripts/import_index_universe.py /tmp/cto-universe-ci.csv --as-of "$(date -u +%F)" --source "CI synthetic index test" --allow-partial --apply
+          curl -fsS http://127.0.0.1:3010/api/market/universe-coverage | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="OBSERVED",d; a={x["index_code"]:x for x in d["indices"]}; assert a["SP500"]["constituents"]==1 and a["STOXX600_ETF_PROXY"]["constituents"]==1,d'
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 28
+      - name: Check scanner responsiveness with 1105 additional catalog rows
+        run: |
+          docker compose -p cto_weinstein exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader -c "INSERT INTO instruments(symbol,name,currency) SELECT 'CISCALE' || g::text,'Synthetic scale fixture ' || g::text,'EUR' FROM generate_series(1,1105) g ON CONFLICT DO NOTHING"
+          curl -fsS --max-time 30 http://127.0.0.1:3010/api/scanner | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["results"])>=1100 and all(x["eligible"] is False for x in d["results"] if x["symbol"].startswith("CISCALE")),d.get("error")'
+      - name: Verify EUR-only PAPER scanner and portfolio dashboard remain responsive
+        run: |
+          curl -fsS --max-time 30 'http://127.0.0.1:3010/api/scanner?currency=EUR' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["results"] and all(x["currency"]=="EUR" for x in d["results"]),d.get("error")'
+          curl -fsS --max-time 30 'http://127.0.0.1:3010/api/paper-candidates' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initialCash"]==500 and d["eligibleCount"]==0 and all(x["currency"]=="EUR" for x in d["candidates"]),d.get("error")'
+          curl -fsS --max-time 30 'http://127.0.0.1:3010/api/dashboard' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500 and len(d["signals"])>=1105,d.get("error")'
+          test "$(docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc 'SELECT COUNT(*) FROM orders')" = 0
       - name: Verify rollback archive without modifying database
         run: |
           latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
@@ -185,6 +208,8 @@ jobs:
         run: |
           latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
           printf 'RESTORE\n' | python3 restore.py "$latest" --apply
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 26
+          docker compose -p cto_weinstein exec -T db psql -U trader -d postgres -Atc "SELECT COUNT(*) FROM pg_database WHERE datname LIKE 'trader_previous_%'" | grep -Fx 1
           for i in $(seq 1 30); do
             if curl -fsS --max-time 3 http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500'; then exit 0; fi
             sleep 2
@@ -196,3 +221,4 @@ jobs:
       - name: Remove temporary CTO test containers
         if: always()
         run: docker compose -p cto_weinstein down --volumes --remove-orphans
+

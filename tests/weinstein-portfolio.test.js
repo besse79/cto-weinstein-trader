@@ -91,3 +91,11 @@ test('a disappeared candle in an open position blocks rather than fabricating eq
   assert.throws(()=>backtestWeinsteinPortfolio(altered,benchmark,options),/Missing weekly candle/);
  }
 });
+
+test('large EUR-only portfolios above the former 150-ticker cap remain bounded and deterministic',()=>{
+ const wide=Array.from({length:155},(_,i)=>({...assets[0],symbol:'WIDE'+String(i).padStart(3,'0')+'.PA'}));
+ const result=backtestWeinsteinPortfolio(wide,benchmark,options);
+ assert.equal(result.symbolsAnalyzed,155);
+ assert.ok(result.equityCurve.every(x=>x.cash>=-1e-7&&x.openPositions<=4));
+ assert.throws(()=>backtestWeinsteinPortfolio(Array.from({length:751},(_,i)=>({...assets[0],symbol:'OVER'+i})),benchmark,options),/Invalid/);
+});

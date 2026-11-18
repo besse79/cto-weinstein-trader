@@ -200,3 +200,124 @@ docker compose -p cto_weinstein --profile automation ps
 docker compose -p cto_weinstein --profile automation logs --tail=80 scheduler
 ```
 Arrêt volontaire : `docker compose -p cto_weinstein --profile automation stop scheduler`. Un redéploiement normal réactive la collecte. L'API de statut en lecture seule est `GET /api/market/collection-status`.
+
+
+## V4.1 — Référentiel S&P 500 / STOXX Europe 600 (branche de recette)
+
+**État : préparé pour les imports de compositions, pas encore peuplé.** Les 26 instruments existants ne deviennent pas automatiquement 1 100 instruments. Les deux ETF `SPY` et `EXSA.DE` restent des benchmarks, pas des listes de constituants. Ne pas fusionner ni déployer cette branche avant CI et validation de la provenance.
+
+### Import d'un instantané de constituants
+
+L'importeur `scripts/import_index_universe.py` accepte un fichier CSV provenant d'une source autorisée, vérifiée et datée. Aucune liste n'est embarquée ni obtenue via un scraper non autorisé. Le format est :
+
+```csv
+index_code,symbol,name,currency
+SP500,AAPL,Apple,USD
+STOXX600,AZN.L,AstraZeneca,GBP
+```
+
+Ces **deux lignes ne sont que des exemples de format**, pas la composition officielle complète.
+
+Pour prévisualiser sans toucher aux bases :
+
+```bash
+python3 scripts/import_index_universe.py /chemin/autorise/constituants.csv --as-of 2026-11-14 --source "Index provider - snapshot 2026-11-14"
+```
+
+Pour appliquer, ajouter `--apply` à **cette même commande** seulement après revue de la source et confirmation des droits d'utilisation. Sans `--allow-partial`, l'import refuse les fichiers ayant moins de 490 lignes SP500 ou 590 lignes STOXX600 ; ce sont des seuils de complétude minimale, **pas une validation d'appartenance officielle**. Pour un sous-ensemble intentionnel, utiliser explicitement `--allow-partial`. Le SHA256 du CSV est journalisé et inclus dans la provenance de chaque observation. L'importeur fait une sauvegarde préalable vérifiée des sources et de PostgreSQL et insère les nouveaux instruments et observations de composition datées dans une transaction. Aucun titre existant n'est effacé ; aucun ordre n'est passé. Une nouvelle composition doit être importée avec une nouvelle date d'observation. Une observation n'établit pas une appartenance historique avant sa date. Le fichier doit employer les **tickers reconnus par le fournisseur de cotations**, qui peuvent différer des codes officiels de l'indice.
+
+L'importeur admet les devises USD, EUR, GBP, CHF, SEK, DKK, NOK et PLN. Le scheduler importe leurs données quotidiennes, mais **les signaux et achats PAPER multidevises ne sont pas validés** : benchmark de même devise, FX, frais et ajustements de split/dividende doivent être fiabilisés séparément. L'intégralité de la composition des deux indices et ses droits de redistribution restent à obtenir et vérifier.
+
+### Collecte progressive sur univers étendu
+
+La V4.1 corrige la rotation du scheduler pour avancer de **120 instruments par traitement** (hors places réservées aux benchmarks) et non d'un seul symbole à la fois. La fenêtre de rattrapage continue à fonctionner sans suppression de l'historique déjà acquis ; `market_job_runs` et `/api/market/collection-status` servent à contrôler la progression. La limite de 120 est volontaire : **1 100 titres ne sont pas rafraîchis chaque jour** à ce plafond, et l'import initial prend plusieurs cycles. Ne pas promettre une fraîcheur quotidienne de tout l'univers avec une source gratuite non contractuelle. Adapter la collecte par fournisseur autorisé et quota, puis mesurer la couverture avant tout entraînement du modèle.
+
+La V4.1 constitue le **socle de données**, pas encore un modèle ML entraîné. Avant l'entraînement V5, il faut contrôler les actions sorties des indices (biais de survivance), les données ajustées, la continuité des historiques et les partages chronologiques sans fuite de futur.
+
+### Suivi objectif de couverture V4.1
+
+Une fois l'import de la composition effectué, consulter `GET /api/market/universe-coverage` pour connaître par indice la date de l'instantané, le nombre de lignes, la couverture à 250 et 750 séances, la fraîcheur des clôtures et la répartition des devises. Avant tout import, cet endpoint retourne `NOT_IMPORTED`. Cette API ne prétend pas vérifier les droits sur les fichiers ni l'historique des entrées/sorties d'indice.
+
+Sources de composition à vérifier avant l'import : les publications et fichiers sous licence de STOXX (https://stoxx.com/index/SXXP/) et les données S&P Dow Jones (https://www.spglobal.com/spdji/en/indices/equity/sp-500/). Les dépôts publics contenant des instantanés S&P 500 peuvent servir à recouper des tickers mais ne constituent pas une preuve de licence ou d'appartenance officielle. Ne jamais déduire les composants du STOXX Europe 600 de l'unique ETF benchmark EXSA.DE.
+
+### Prévisualisation automatisée des composants S&P 500
+
+Le script `scripts/fetch_sp500_preview.py` télécharge **uniquement** le fichier public de la liste américaine depuis `chinobing/historical_sp500_constituents`, en limitant la réponse à 250 ko. Il vérifie le format, le nombre de lignes et la **date exacte** indiquée sur chaque ligne avant de créer un instantané normalisé utilisable par le validateur V4.1. Il n'installe rien, ne touche pas à PostgreSQL et ne peut pas importer une composition dont la date diffère. Il faut utiliser la date réellement publiée par la source (elle peut changer chaque jour).
+
+```bash
+python3 scripts/fetch_sp500_preview.py /tmp/weinstein-sp500-preview.csv --as-of 2026-11-14
+```
+
+Cette liste GitHub est un **instantané tiers, non une liste officielle ni une preuve de licence**. Ne pas l'appliquer directement à la base tant qu'il n'est pas vérifié auprès de S&P et que les droits d'utilisation ne sont pas établis. Les symboles avec points sont convertis en tirets pour l'adaptateur Yahoo ; leur validité doit être contrôlée auprès du fournisseur.
+
+La disponibilité des 600 composants européens reste bloquée par une source de composition exploitable et autorisée. La V4.1 ne prétend pas avoir chargé les 1 100 titres.
+
+## Critères de clôture V4 avant V5
+
+Le contrôle de recette `python3 scripts/v4_release_gate.py` interroge **uniquement en lecture** les API locales `127.0.0.1:3010`. Il vérifie : statut PAPER, capital initial 500 EUR, couverture historique des instruments existants, existence d'une collecte réussie, cohérence des candidats et disponibilité du backtest multi-actifs. Il renvoie `BLOCKED` (code 1) en cas d'échec ; `MANUAL_PAPER_REVIEW` (code 0) n'est **pas** une certification de performance ou de données licenciées. Ne jamais exécuter des ordres réels.
+
+Clôturer V4 seulement après une recette WSL des cotations et signaux réels, du scheduler sur une clôture européenne et américaine, du contrôle des stops et des sauvegardes/restaurations. La suite V4.1 élargit le référentiel mais ne change pas les contraintes de simulation : EUR uniquement et maximum 750 titres pour le backtest partagé existant. Un univers étendu sera **bloqué** sur ce backtest tant que la montée en charge et les benchmarks/FX ne seront pas revus. La V5 ne doit démarrer qu'après ces contrôles documentés.
+
+## Revue Weinstein le week-end (V4.1)
+
+- **Lundi à vendredi, 20:45 Europe/Paris** : import EUR/GBP/CHF et autres devises européennes, après leur clôture.
+- **Lundi à vendredi, 23:45 Europe/Paris** : import US, après clôture américaine et délai de consolidation des cours.
+- **Samedi et dimanche** : consulter dans l'interface le scanner et « Paris fictifs ». Les signaux utilisent la semaine ISO **achevée le vendredi** ; ils sont donc examinables le samedi, **pas pendant la séance du vendredi**.
+- **Lundi avant l'ouverture** : vérifier les conditions d'entrée et la trésorerie PAPER. Pas de passage d'ordre automatique.
+
+Correctif de qualité : le lecteur Yahoo excluait auparavant systématiquement la bougie de la journée, y compris après la clôture. V4.1 accepte désormais une bougie du même jour seulement après un délai de sécurité défini par le fuseau reconnu de la place, avec tests Paris/New York et conservation de l'exclusion intraday. Les fuseaux non reconnus restent bloqués pour les bougies du jour. Une collecte « SUCCESS » ne prouve pas nécessairement la présence de la bougie du vendredi : vérifier aussi les dates par symbole et par benchmark dans les diagnostics.
+
+**Important** : ce changement est présent uniquement sur la branche de recette jusqu'au déploiement explicite. L'installation V4 actuelle continue à utiliser ses horaires et règles précédents. Le moteur Docker doit rester actif pour que la collecte ait lieu.
+
+## V4.1 — Précontrôle automatique des 1 100 valeurs avant import
+
+`python3 scripts/v4_1_universe_preflight.py` récupère **une seule fois**, sur demande, les deux sources de recherche :
+
+1. Instantané public daté des 503 titres du S&P 500 (dépôt tiers `chinobing/historical_sp500_constituents`, initialement dérivé de Wikipédia). Vérification d'une date unique, récente et non future, du nombre de titres, de la syntaxe et des doublons.
+2. Positions du fonds iShares EXSA (source BlackRock officielle), **PROXY** de l'indice STOXX Europe 600, **pas** une composition officielle. Vérification de la date effective, de l'exclusion des liquidités/dérivés, des places de cotation et des devises. Toute correspondance Yahoo non résolue bloque l'instantané : aucune valeur artificielle.
+
+Le rapport inclut le nombre d'instruments, les dates et les SHA256. Les CSV sont conservés sous `~/cto-weinstein-previews/<timestamp>/`, sans modifier Git, PostgreSQL, le portefeuille ou les ordres PAPER. L'outil échoue proprement si le fournisseur exige une connexion, change son format ou refuse le téléchargement. L'importeur SQL reconnaît séparément `SP500`, `STOXX600` et `STOXX600_ETF_PROXY`. Un dossier ETF n'est jamais renommé en composition officielle.
+
+Sur un clone de la branche de recette, ce précontrôle est exécutable sans changement applicatif local :
+
+```bash
+cd ~/cto-weinstein-trader && git fetch origin feature/v4-1-universe-collection && dir="$(mktemp -d)" && git archive FETCH_HEAD | tar -xf - -C "$dir" && PYTHONDONTWRITEBYTECODE=1 python3 "$dir/scripts/v4_1_universe_preflight.py"
+```
+
+Une réussite `PREVIEWS_COMPLETE` **n'est pas** un import en base et ne prouve ni les droits sur les composantes de l'indice ni la validité de chaque code Yahoo. Un import réel reste soumis au contrôle de provenance, à une sauvegarde vérifiée et à une recette en copie isolée. Les 503 + environ 600 titres ne constituent pas 1 100 titres rafraîchis le vendredi : le plafond actuel de 120 instrument(s) par collecte ne garantit pas une couverture EOD complète.
+
+### Moteur et affichage sur un univers plus large
+
+- Le backtest partagé EUR passe de 150 à **750 titres maximum**, avec lecture PostgreSQL groupée. C'est une mesure de capacité et non une preuve statistique de rendement.
+- La route `/api/market/universe-coverage` et l'interface affichent par source la couverture des 250+ séances et le nombre de titres dont une clôture du vendredi **est réellement présente**. La revue large est déclarée « prête » uniquement à partir de 95 % de couverture historique et de bougies de vendredi.
+- Les cotations britanniques renvoyées par Yahoo en `GBp` ou `GBX` sont converties en GBP (prix / 100), uniquement pour des instruments `.L` dont la devise référencée est GBP. Les cours restent exclus des achats fictifs tant qu'aucune conversion EUR et aucun benchmark approprié ne sont vérifiés.
+- Les achats PAPER restent fermés le samedi et le dimanche, même quand une configuration hebdomadaire est retenue pour analyse. Une confirmation serveur et le respect des risques restent obligatoires en séance.
+- Des volumes historiques 5 ans, cotes ajustées et composition « point in time » ne sont pas encore tous validés. Ne pas commencer V5 sur une population dont les données ne sont pas complètes et documentées.
+
+### EXSA : remédiation au 404 du 14 novembre 2026
+
+La prévisualisation initiale depuis `.../latest-holdings.csv` renvoie **HTTP 404** pour le produit 251931. Le downloader V4.1 teste désormais, sans contournement et sans réessais agressifs, le fichier iShares historique documenté par tidy-finance (`1478358465952.ajax?fileType=csv&fileName=EXSA_holdings&dataType=fund`), puis la déclinaison suisse autorisée, puis le lien récent. Il accepte uniquement un vrai CSV iShares daté et cohérent. Sur HTTP 401/403/429, il s'arrête immédiatement et signale le refus du fournisseur.
+
+Si les liens directs sont indisponibles, accéder à la page officielle <https://www.ishares.com/de/privatanleger/de/produkte/251931/> et utiliser la commande **Download latest fund holdings CSV data** dans « Positionen » depuis le navigateur. Le fichier d'origine peut être fourni sans le modifier via `--exsa-file /chemin/vers/EXSA_holdings.csv`. Le précontrôle ne modifie pas la base et bloque tout écart de date et symbole. Le fichier local est un instantané des **positions ETF**, pas de l'indice officiel STOXX.
+
+Pour réutiliser les 503 titres S&P déjà validés, utiliser en plus `--sp500-file /home/benoit/cto-weinstein-previews/20261114T172446Z/sp500.csv`. L'empreinte et le rapport antérieur restent la provenance de cet instantané.
+
+Ne pas déployer la branche ni lancer d'apprentissage tant que les 600 composants européens et la correspondance fournisseur ne sont pas validés.
+
+### V4.1 : références complètes vérifiées et mise en base conditionnelle
+
+Le diagnostic GitHub du 14 novembre 2026 a validé, sans import PostgreSQL, un fichier EXSA BlackRock de **602 actions** daté du **12 novembre 2026**, après correction de QIA.DE et VSURE.ST. Le fichier public S&P 500 comporte **503 lignes** datées du **14 novembre 2026**. Total : **1 105 lignes de référence**, qui peuvent comporter des doublons avec les instruments déjà suivis. EXSA = **positions de l'ETF, pas composition officielle de STOXX**. Ne pas confondre ces fichiers avec des données de cours validées.
+
+Le précontrôle `scripts/v4_1_universe_preflight.py` écrit désormais un `manifest.json` dans son dossier horodaté. Exemple sur WSL :
+
+```bash
+python3 scripts/v4_1_universe_preflight.py \
+  --sp500-file "$HOME/cto-weinstein-previews/20261114T172446Z/sp500.csv" \
+  --sp500-as-of 2026-11-14
+```
+
+La sortie `PREVIEWS_COMPLETE` est nécessaire pour passer aux étapes suivantes. La commande `python3 scripts/stage_v4_universe.py /chemin/manifest.json` effectue **uniquement une validation en lecture**, et vérifie les empreintes SHA256, les dates, les comptes exacts et les collisions de devises.
+
+Un import dans la base existante n'est possible **qu'après déploiement sécurisé et recette sur WSL**, en exécutant `stage_v4_universe.py ... --apply --acknowledge-proxy` depuis la véritable installation (avec `.git` et `.env`). Il réalise une sauvegarde source+PostgreSQL vérifiée et insère les deux compositions en **une seule transaction**. Il ne récupère pas les 5 ans de cours, ne passe aucun ordre PAPER et n'autorise aucune transaction réelle. Tant que les cours ne sont pas chargés et contrôlés, aucun indice étendu n'est prêt à être analysé.
+
+**Ne pas déclencher l'import à partir d'une copie temporaire créée avec `git archive`** : la sauvegarde doit pointer sur l'application installée.

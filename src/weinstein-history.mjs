@@ -1,4 +1,4 @@
-import {aggregateWeeks} from './weinstein.mjs';
+import {aggregateWeeks,completedWeekCutoff} from './weinstein.mjs';
 
 const mean=xs=>xs.reduce((sum,x)=>sum+x,0)/xs.length;
 
@@ -11,9 +11,7 @@ const mean=xs=>xs.reduce((sum,x)=>sum+x,0)/xs.length;
 export function analyzeHistoricalPhases(daily,benchmarkDaily,{asOf=new Date().toISOString().slice(0,10)}={}){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf)||Number.isNaN(Date.parse(asOf+'T12:00:00Z')))
   throw new Error('Invalid asOf');
- const today=new Date(asOf+'T12:00:00Z');
- today.setUTCDate(today.getUTCDate()-(today.getUTCDay()+6)%7);
- const cutoff=today.toISOString().slice(0,10);
+ const cutoff=completedWeekCutoff(asOf);
  const weeks=aggregateWeeks(daily).filter(w=>w.week<cutoff&&w.lastDay<=asOf);
  const ref=aggregateWeeks(benchmarkDaily||[]).filter(w=>w.week<cutoff&&w.lastDay<=asOf);
  const bm=new Map(ref.map(w=>[w.week,w.close]));
