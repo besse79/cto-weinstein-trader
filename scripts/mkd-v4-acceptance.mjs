@@ -14,7 +14,7 @@ import {screenPaperCandidates} from '../src/paper-candidates.mjs';
 const base=process.env.MKD_BASE_URL??'http://127.0.0.1:8100';
 const web=process.env.WEB_BASE_URL??'http://127.0.0.1:3010';
 const reportDir=process.env.MKD_REPORT_DIR??'/tmp/mkd-v4-acceptance';
-const maxConcurrency=Number(process.env.MKD_CONCURRENCY??'4');
+const maxConcurrency=Number(process.env.MKD_CONCURRENCY??'2');
 if(!Number.isSafeInteger(maxConcurrency)||maxConcurrency<1||maxConcurrency>8)throw Error('MKD_CONCURRENCY must be 1..8');
 process.env.MKD_BASE_URL=base;
 const benchmarks={EUR:'EXSA.DE',USD:'SPY'};
