@@ -14,7 +14,17 @@ function configuredBase(){
  return u.toString().replace(/\/$/,'');
 }
 async function getJson(path,fetchImpl){
- const response=await fetchImpl(configuredBase()+path,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(15000),cache:'no-store'});
+ // Retry transient transport failures only. HTTP errors and invalid payloads fail closed.
+ let response;
+ for(let attempt=0;attempt<3;attempt++){
+  try{
+   response=await fetchImpl(configuredBase()+path,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(30000),cache:'no-store'});
+   break;
+  }catch(error){
+   if(attempt===2)throw error;
+   await new Promise(resolve=>setTimeout(resolve,300*(attempt+1)));
+  }
+ }
  if(!response.ok)throw Error('MKD HTTP '+response.status+' for '+path.split('?')[0]);
  return response.json();
 }
