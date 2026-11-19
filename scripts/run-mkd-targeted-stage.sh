@@ -13,7 +13,9 @@ python3 -m py_compile "$tmp"
 venv=/tmp/mkd-yahoo-stage-venv
 if [[ ! -x "$venv/bin/python" ]]; then python3 -m venv "$venv"; fi
 "$venv/bin/python" -m pip install -q 'yfinance>=0.2.60,<2'
-out="/tmp/mkd-targeted-stage-$(date -u +%Y%m%dT%H%M%SZ)"
-"$venv/bin/python" "$tmp" "$report" --output "$out"
+previous="/tmp/mkd-targeted-stage-20261118T221339Z/manifest.json"
+[[ -f "$previous" ]] || { echo "Previous staged manifest missing"; exit 2; }
+out="/tmp/mkd-targeted-retry-$(date -u +%Y%m%dT%H%M%SZ)"
+"$venv/bin/python" "$tmp" "$report" --retry-manifest "$previous" --output "$out"
 echo "=== W branch unchanged: $(git branch --show-current) ==="
 echo "=== MKD branch unchanged: $(git -C "$mkd" branch --show-current) ==="
