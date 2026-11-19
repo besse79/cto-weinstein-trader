@@ -57,7 +57,19 @@ async function worker(){
   const i=candidates[next++];
   try{
    const local=bars(i);
-   if(!local.length){results.push({symbol:i.symbol,kind:'NO_HISTORY',localBars:0,skipped:true});continue}
+   if(!local.length){
+    try{
+     const mkd=await fetchMkdLegacy(i.symbol);
+     const items=mkd.items??[];
+     if(!items.length){results.push({symbol:i.symbol,kind:'NO_HISTORY',localBars:0,mkdBars:0});continue}
+     const currencyExact=mkd.currency===i.currency;
+     const penceCompatible=i.currency==='GBP'&&mkd.currency==='GBX';
+     results.push({symbol:i.symbol,kind:'MKD_ONLY',localBars:0,mkdBars:items.length,
+      localCurrency:i.currency,mkdCurrency:mkd.currency,currencyExact,penceCompatible,
+      usableForLocalTrading:currencyExact,backtestEligible:false});
+    }catch(e){results.push({symbol:i.symbol,kind:'NO_HISTORY',localBars:0,error:String(e.message??e)})}
+    continue;
+   }
    const mkd=await fetchMkdLegacy(i.symbol);
    if(mkd.currency!==i.currency)throw Error('Currency mismatch');
    const c=compareCandleSeries(local,mkd.items);
@@ -96,6 +108,8 @@ const ordered=results.sort((a,b)=>a.symbol.localeCompare(b.symbol));
 const failures=ordered.filter(r=>r.kind==='ERROR'||(r.exact===false)||(r.signalExact===false));
 const uncovered=ordered.filter(r=>r.kind==='NO_HISTORY');
 const ohlcvOnly=ordered.filter(r=>r.kind==='OHLCV_ONLY_NO_BENCHMARK');
+const mkdOnly=ordered.filter(r=>r.kind==='MKD_ONLY');
+const mkdOnlyCurrencyConflicts=mkdOnly.filter(r=>!r.currencyExact);
 const shadowScanner={...scanner,results:scanner.results.map(r=>mkdScan.get(r.symbol)??r)};
 const benchmarkDay=benchmarkData.get('EUR')?.bars.at(-1)?.day??null;
 let paperParity={exact:false,error:'Not executed'};
@@ -121,14 +135,14 @@ for(const r of ohlcvOnly){const currency=r.currency??'UNKNOWN';unsupportedCurren
 const stages={};
 for(const r of ordered.filter(r=>r.kind==='INSTRUMENT'))stages[r.stage]=(stages[r.stage]??0)+1;
 const benchmarkFailures=ordered.filter(r=>r.kind==='BENCHMARK'&&!r.exact);
-const gatePassed=failures.length===0&&benchmarkFailures.length===0&&uncovered.length===0&&ohlcvOnly.length===0&&paperParity.exact&&
+const gatePassed=failures.length===0&&benchmarkFailures.length===0&&uncovered.length===0&&mkdOnly.length===0&&ohlcvOnly.length===0&&paperParity.exact&&
  ordered.filter(r=>r.kind==='INSTRUMENT').length>0;
 const report={generatedAt:new Date().toISOString(),asOf:scanner.asOf,source:'MKD_LEGACY_NON_PIT',
  backtestEligible:false,mode:'READ_ONLY_SHADOW',gatePassed,totals:{localInstruments:instruments.length,
- compared:ordered.filter(r=>r.kind==='INSTRUMENT').length,uncovered:uncovered.length,ohlcvOnly:ohlcvOnly.length,
+ compared:ordered.filter(r=>r.kind==='INSTRUMENT').length,uncovered:uncovered.length,mkdOnly:mkdOnly.length,mkdOnlyCurrencyConflicts:mkdOnlyCurrencyConflicts.length,ohlcvOnly:ohlcvOnly.length,
  failures:failures.length,benchmarkFailures:benchmarkFailures.length,unsupportedCurrencies,stages},held,portfolio:{cash:dashboard.cash,equity:dashboard.equity,
  positions:(dashboard.positions??[]).map(p=>({symbol:p.symbol,qty:p.qty,stop:p.stop,alert:p.alert})),
- paperParity},failures,uncovered,ohlcvOnly,results:ordered};
+ paperParity},failures,uncovered,mkdOnly,ohlcvOnly,results:ordered};
 mkdirSync(reportDir,{recursive:true});
 const filename=reportDir+'/mkd-acceptance-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
 writeFileSync(filename,JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
