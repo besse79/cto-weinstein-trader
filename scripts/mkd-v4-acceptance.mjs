@@ -120,12 +120,13 @@ const unsupportedCurrencies={};
 for(const r of ohlcvOnly){const currency=r.currency??'UNKNOWN';unsupportedCurrencies[currency]=(unsupportedCurrencies[currency]??0)+1;}
 const stages={};
 for(const r of ordered.filter(r=>r.kind==='INSTRUMENT'))stages[r.stage]=(stages[r.stage]??0)+1;
-const gatePassed=failures.length===0&&ohlcvOnly.length===0&&paperParity.exact&&
+const benchmarkFailures=ordered.filter(r=>r.kind==='BENCHMARK'&&!r.exact);
+const gatePassed=failures.length===0&&benchmarkFailures.length===0&&uncovered.length===0&&ohlcvOnly.length===0&&paperParity.exact&&
  ordered.filter(r=>r.kind==='INSTRUMENT').length>0;
 const report={generatedAt:new Date().toISOString(),asOf:scanner.asOf,source:'MKD_LEGACY_NON_PIT',
  backtestEligible:false,mode:'READ_ONLY_SHADOW',gatePassed,totals:{localInstruments:instruments.length,
  compared:ordered.filter(r=>r.kind==='INSTRUMENT').length,uncovered:uncovered.length,ohlcvOnly:ohlcvOnly.length,
- failures:failures.length,unsupportedCurrencies,stages},held,portfolio:{cash:dashboard.cash,equity:dashboard.equity,
+ failures:failures.length,benchmarkFailures:benchmarkFailures.length,unsupportedCurrencies,stages},held,portfolio:{cash:dashboard.cash,equity:dashboard.equity,
  positions:(dashboard.positions??[]).map(p=>({symbol:p.symbol,qty:p.qty,stop:p.stop,alert:p.alert})),
  paperParity},failures,uncovered,ohlcvOnly,results:ordered};
 mkdirSync(reportDir,{recursive:true});
