@@ -17,9 +17,13 @@ test -n "$OLD_WEB" || { echo "BLOCKED: existing web service absent"; exit 1; }
 OLD_IMAGE="$(docker inspect -f '{{.Image}}' "$OLD_WEB")"
 echo "Previous web container: $OLD_WEB image: $OLD_IMAGE"
 echo "=== Backup, before any deployment ==="
-docker compose -p "$PROJECT" exec -T db pg_dump -U trader -d trader -Fc > "$RELEASE/trader.dump"
+echo "Backing up PostgreSQL..."
+docker compose -p "$PROJECT" exec -T db pg_dump -U trader -d trader -Fc > "$RELEASE/trader.dump" || { echo "BLOCKED: pg_dump failed"; exit 2; }
+echo "PostgreSQL dump created"
 test -s "$RELEASE/trader.dump"
-docker compose -p "$PROJECT" exec -T db pg_restore --list < "$RELEASE/trader.dump" | grep -q TABLE
+docker compose -p "$PROJECT" exec -T db pg_restore --list < "$RELEASE/trader.dump" > "$RELEASE/pg-restore-list.txt" || { echo "BLOCKED: pg_restore archive check failed"; exit 2; }
+if ! grep -q "TABLE" "$RELEASE/pg-restore-list.txt"; then echo "BLOCKED: backup archive has no tables"; exit 2; fi
+echo "Backing up local source..."
 tar --exclude=.git --exclude=node_modules --exclude=.next -czf "$RELEASE/previous-source.tar.gz" -C "$ROOT" .
 sha256sum "$RELEASE/trader.dump" "$RELEASE/previous-source.tar.gz" > "$RELEASE/SHA256SUMS"
 (cd "$RELEASE" && sha256sum -c SHA256SUMS)
