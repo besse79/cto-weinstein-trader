@@ -139,7 +139,7 @@ for(const r of ohlcvOnly){const currency=r.currency??'UNKNOWN';unsupportedCurren
 const stages={};
 for(const r of ordered.filter(r=>r.kind==='INSTRUMENT'))stages[r.stage]=(stages[r.stage]??0)+1;
 const benchmarkFailures=ordered.filter(r=>r.kind==='BENCHMARK'&&!r.exact);
-const gatePassed=failures.length===0&&benchmarkFailures.length===0&&uncovered.length===0&&mkdOnly.length===0&&ohlcvOnly.length===0&&outOfScopePaper.length===0&&paperParity.exact&&
+const gatePassed=failures.length===0&&benchmarkFailures.length===0&&uncovered.length===0&&mkdOnly.length===0&&ohlcvOnly.length===0&&outOfScopeScanner.length===0&&outOfScopePaper.length===0&&paperParity.exact&&
  ordered.filter(r=>r.kind==='INSTRUMENT').length>0;
 const report={generatedAt:new Date().toISOString(),asOf:scanner.asOf,source:'MKD_LEGACY_NON_PIT',
  backtestEligible:false,mode:'READ_ONLY_SHADOW',scopeCurrencies:['EUR','USD'],gatePassed,totals:{localInstruments:instruments.length,scopedInstruments:instruments.length-excludedInstruments.length,excludedCurrencies:excludedInstruments.length,outOfScopeScanner:outOfScopeScanner.length,outOfScopePaper:outOfScopePaper.length,
@@ -151,5 +151,5 @@ mkdirSync(reportDir,{recursive:true});
 const filename=reportDir+'/mkd-acceptance-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
 writeFileSync(filename,JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
 console.log(JSON.stringify({report:filename,gatePassed,totals:report.totals,paperParity:report.portfolio.paperParity,
- failures:failures.slice(0,15),held},null,2));
+ failures:failures.slice(0,15),uncoveredSymbols:uncovered.map(r=>({symbol:r.symbol,error:r.error??null})),mkdOnlySymbols:mkdOnly.map(r=>({symbol:r.symbol,currency:r.localCurrency,bars:r.mkdBars})),held},null,2));
 if(!gatePassed)process.exitCode=2;
