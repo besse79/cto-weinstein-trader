@@ -18,6 +18,7 @@ const maxConcurrency=Number(process.env.MKD_CONCURRENCY??'2');
 if(!Number.isSafeInteger(maxConcurrency)||maxConcurrency<1||maxConcurrency>8)throw Error('MKD_CONCURRENCY must be 1..8');
 process.env.MKD_BASE_URL=base;
 const benchmarks={EUR:'EXSA.DE',USD:'SPY'};
+const allowedCurrencies=new Set(['EUR','USD']);
 function query(sql){
  const out=execFileSync('docker',['compose','-p','cto_weinstein','exec','-T','db','psql','-U','trader','-d','trader','-X','-A','-t','-F','|','-v','ON_ERROR_STOP=1','-c',sql],
  {encoding:'utf8',timeout:120000,maxBuffer:60*1024*1024});
@@ -50,7 +51,8 @@ for(const [currency,symbol] of Object.entries(benchmarks)){
  results.push({symbol,kind:'BENCHMARK',localBars:c.localBars,mkdBars:c.mkdBars,exact:c.exact,
   missingLocal:c.missingInLocal.length,missingMkd:c.missingInMkd.length,different:c.different.length});
 }
-const candidates=instruments.filter(i=>!Object.values(benchmarks).includes(i.symbol));
+const excludedInstruments=instruments.filter(i=>!allowedCurrencies.has(i.currency));
+const candidates=instruments.filter(i=>allowedCurrencies.has(i.currency)&&!Object.values(benchmarks).includes(i.symbol));
 let next=0;
 async function worker(){
  while(next<candidates.length){
@@ -128,6 +130,8 @@ try{
  paperParity={exact:differences.length===0&&shadow.eligibleCount===paper.eligibleCount,
   liveEligible:paper.eligibleCount,shadowEligible:shadow.eligibleCount,differences};
 }catch(e){paperParity={exact:false,error:String(e.message??e)}}
+const outOfScopeScanner=(scanner.results??[]).filter(r=>!allowedCurrencies.has(r.currency));
+const outOfScopePaper=(paper.candidates??[]).filter(r=>!allowedCurrencies.has(r.currency));
 const heldSymbols=new Set((dashboard.positions??[]).map(p=>p.symbol));
 const held=ordered.filter(r=>heldSymbols.has(r.symbol));
 const unsupportedCurrencies={};
@@ -135,10 +139,10 @@ for(const r of ohlcvOnly){const currency=r.currency??'UNKNOWN';unsupportedCurren
 const stages={};
 for(const r of ordered.filter(r=>r.kind==='INSTRUMENT'))stages[r.stage]=(stages[r.stage]??0)+1;
 const benchmarkFailures=ordered.filter(r=>r.kind==='BENCHMARK'&&!r.exact);
-const gatePassed=failures.length===0&&benchmarkFailures.length===0&&uncovered.length===0&&mkdOnly.length===0&&ohlcvOnly.length===0&&paperParity.exact&&
+const gatePassed=failures.length===0&&benchmarkFailures.length===0&&uncovered.length===0&&mkdOnly.length===0&&ohlcvOnly.length===0&&outOfScopePaper.length===0&&paperParity.exact&&
  ordered.filter(r=>r.kind==='INSTRUMENT').length>0;
 const report={generatedAt:new Date().toISOString(),asOf:scanner.asOf,source:'MKD_LEGACY_NON_PIT',
- backtestEligible:false,mode:'READ_ONLY_SHADOW',gatePassed,totals:{localInstruments:instruments.length,
+ backtestEligible:false,mode:'READ_ONLY_SHADOW',scopeCurrencies:['EUR','USD'],gatePassed,totals:{localInstruments:instruments.length,scopedInstruments:instruments.length-excludedInstruments.length,excludedCurrencies:excludedInstruments.length,outOfScopeScanner:outOfScopeScanner.length,outOfScopePaper:outOfScopePaper.length,
  compared:ordered.filter(r=>r.kind==='INSTRUMENT').length,uncovered:uncovered.length,mkdOnly:mkdOnly.length,mkdOnlyCurrencyConflicts:mkdOnlyCurrencyConflicts.length,ohlcvOnly:ohlcvOnly.length,
  failures:failures.length,benchmarkFailures:benchmarkFailures.length,unsupportedCurrencies,stages},held,portfolio:{cash:dashboard.cash,equity:dashboard.equity,
  positions:(dashboard.positions??[]).map(p=>({symbol:p.symbol,qty:p.qty,stop:p.stop,alert:p.alert})),
