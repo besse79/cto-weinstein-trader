@@ -18,7 +18,7 @@ OLD_IMAGE="$(docker inspect -f '{{.Image}}' "$OLD_WEB")"
 echo "Previous web container: $OLD_WEB image: $OLD_IMAGE"
 echo "=== Backup, before any deployment ==="
 echo "Backing up PostgreSQL..."
-docker compose -p "$PROJECT" exec -T db pg_dump -U trader -d trader -Fc > "$RELEASE/trader.dump" || { echo "BLOCKED: pg_dump failed"; exit 2; }
+docker compose -p "$PROJECT" exec -T db pg_dump -U trader -d trader -Fc </dev/null > "$RELEASE/trader.dump" || { echo "BLOCKED: pg_dump failed"; exit 2; }
 echo "PostgreSQL dump created"
 test -s "$RELEASE/trader.dump"
 docker compose -p "$PROJECT" exec -T db pg_restore --list < "$RELEASE/trader.dump" > "$RELEASE/pg-restore-list.txt" || { echo "BLOCKED: pg_restore archive check failed"; exit 2; }
@@ -40,11 +40,11 @@ YAML
 COMPOSE=(docker compose -p "$PROJECT" -f "$RELEASE/source/docker-compose.yml" -f "$RELEASE/source/compose.v4.yml")
 "${COMPOSE[@]}" config -q
 echo "=== Check MKD reachability from Docker network ==="
-docker run --rm --network "${PROJECT}_default" --add-host=host.docker.internal:host-gateway curlimages/curl:8.12.1 -fsS --max-time 10 http://host.docker.internal:8100/health/live >/dev/null || {
+docker run --rm -i=false --network "${PROJECT}_default" --add-host=host.docker.internal:host-gateway curlimages/curl:8.12.1 -fsS --max-time 10 http://host.docker.internal:8100/health/live </dev/null >/dev/null || {
  echo "BLOCKED: MKD 8100 not reachable from Docker; no deployment made"; exit 2;
 }
 echo "=== Test staged code without changing running web ==="
-"${COMPOSE[@]}" run --rm --no-deps web sh -c 'npm install --no-audit --no-fund >/dev/null && npm test && npm run typecheck' || {
+"${COMPOSE[@]}" run --rm -T --no-deps web sh -c 'npm install --no-audit --no-fund >/dev/null && npm test && npm run typecheck' </dev/null || {
  echo "BLOCKED: tests/typecheck failed; no deployment made"; exit 3;
 }
 rollback(){
