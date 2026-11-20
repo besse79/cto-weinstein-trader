@@ -51,7 +51,9 @@ rollback(){
  code=$?
  trap - ERR
  if [[ "${DEPLOY_STARTED:-0}" == 1 ]]; then
-  echo "Deployment failed: rolling back original web container/source"
+  echo "Deployment failed: recent web logs before rollback:"
+  docker compose -p "$PROJECT" -f "$RELEASE/source/docker-compose.yml" -f "$RELEASE/source/compose.v4.yml" logs --tail=90 web 2>&1 || true
+  echo "Rolling back original web container/source"
   docker compose -p "$PROJECT" -f "$ROOT/docker-compose.yml" up -d --no-deps --force-recreate web || true
  fi
  echo "Backup: $RELEASE"
@@ -62,24 +64,33 @@ DEPLOY_STARTED=1
 "${COMPOSE[@]}" up -d --no-deps --force-recreate web
 echo "=== Post-deployment HTTP checks ==="
 python3 - <<'PY'
-import json,time,urllib.request
+import json,time,urllib.request,urllib.error
 base='http://127.0.0.1:3010'
-for _ in range(45):
+for attempt in range(8):
  try:
-  with urllib.request.urlopen(base+'/api/scanner',timeout=30) as r: scanner=json.load(r)
+  print('Checking /api/scanner',flush=True)
+  with urllib.request.urlopen(base+'/api/scanner',timeout=90) as r: scanner=json.load(r)
   assert isinstance(scanner.get('results'),list)
   assert all(x['currency'] in ('EUR','USD') for x in scanner['results'])
   assert all(x['symbol'] not in ('KESKOBU0126.HE','VSURE.ST','VYLR') for x in scanner['results'])
-  with urllib.request.urlopen(base+'/api/paper-candidates',timeout=30) as r: paper=json.load(r)
+  print('Checking /api/paper-candidates',flush=True)
+  with urllib.request.urlopen(base+'/api/paper-candidates',timeout=90) as r: paper=json.load(r)
   assert isinstance(paper.get('candidates'),list)
   assert all(x.get('currency','EUR') in ('EUR','USD') for x in paper['candidates'])
-  with urllib.request.urlopen(base+'/api/mkd-shadow?symbol=SAMPO.HE&analysis=true',timeout=60) as r: shadow=json.load(r)
+  print('Checking /api/mkd-shadow SAMPO',flush=True)
+  with urllib.request.urlopen(base+'/api/mkd-shadow?symbol=SAMPO.HE&analysis=true',timeout=90) as r: shadow=json.load(r)
   assert shadow['symbol']=='SAMPO.HE' and shadow['mode']=='READ_ONLY_SHADOW'
   assert shadow['paperEligible'] is False and shadow['backtestEligible'] is False
   print(json.dumps({'scannerCount':len(scanner['results']),'paperCount':len(paper['candidates']),'sampo':shadow},indent=2))
   break
+ except urllib.error.HTTPError as e:
+  last=f'HTTP {e.code}: '+e.read(3000).decode(errors='replace')
+  print('Attempt',attempt+1,'failed:',last,flush=True)
+  time.sleep(3)
  except Exception as e:
-  last=e;time.sleep(3)
+  last=e
+  print('Attempt',attempt+1,'failed:',repr(e),flush=True)
+  time.sleep(3)
 else: raise RuntimeError('Post-deployment checks failed: '+str(last))
 PY
 DEPLOY_STARTED=0
