@@ -52,7 +52,9 @@ for(const [currency,symbol] of Object.entries(benchmarks)){
   missingLocal:c.missingInLocal.length,missingMkd:c.missingInMkd.length,different:c.different.length});
 }
 const excludedInstruments=instruments.filter(i=>!allowedCurrencies.has(i.currency));
-const candidates=instruments.filter(i=>allowedCurrencies.has(i.currency)&&!Object.values(benchmarks).includes(i.symbol));
+const explicitlyExcluded=new Map([['KESKOBU0126.HE','INSUFFICIENT_HISTORY'],['VSURE.ST','REJECTED_CURRENCY'],['VYLR','UNSUPPORTED_MARKET']]);
+const candidates=instruments.filter(i=>allowedCurrencies.has(i.currency)&&!Object.values(benchmarks).includes(i.symbol)&&!explicitlyExcluded.has(i.symbol));
+const excludedSymbols=instruments.filter(i=>explicitlyExcluded.has(i.symbol)).map(i=>({symbol:i.symbol,reason:explicitlyExcluded.get(i.symbol)}));
 let next=0;
 async function worker(){
  while(next<candidates.length){
@@ -142,7 +144,7 @@ const benchmarkFailures=ordered.filter(r=>r.kind==='BENCHMARK'&&!r.exact);
 const gatePassed=failures.length===0&&benchmarkFailures.length===0&&uncovered.length===0&&mkdOnly.length===0&&ohlcvOnly.length===0&&outOfScopeScanner.length===0&&outOfScopePaper.length===0&&paperParity.exact&&
  ordered.filter(r=>r.kind==='INSTRUMENT').length>0;
 const report={generatedAt:new Date().toISOString(),asOf:scanner.asOf,source:'MKD_LEGACY_NON_PIT',
- backtestEligible:false,mode:'READ_ONLY_SHADOW',scopeCurrencies:['EUR','USD'],gatePassed,totals:{localInstruments:instruments.length,scopedInstruments:instruments.length-excludedInstruments.length,excludedCurrencies:excludedInstruments.length,outOfScopeScanner:outOfScopeScanner.length,outOfScopePaper:outOfScopePaper.length,
+ backtestEligible:false,mode:'READ_ONLY_SHADOW',scopeCurrencies:['EUR','USD'],gatePassed,totals:{localInstruments:instruments.length,scopedInstruments:instruments.length-excludedInstruments.length,excludedCurrencies:excludedInstruments.length,excludedSymbols:excludedSymbols.length,outOfScopeScanner:outOfScopeScanner.length,outOfScopePaper:outOfScopePaper.length,
  compared:ordered.filter(r=>r.kind==='INSTRUMENT').length,uncovered:uncovered.length,mkdOnly:mkdOnly.length,mkdOnlyCurrencyConflicts:mkdOnlyCurrencyConflicts.length,ohlcvOnly:ohlcvOnly.length,
  failures:failures.length,benchmarkFailures:benchmarkFailures.length,unsupportedCurrencies,stages},held,portfolio:{cash:dashboard.cash,equity:dashboard.equity,
  positions:(dashboard.positions??[]).map(p=>({symbol:p.symbol,qty:p.qty,stop:p.stop,alert:p.alert})),
