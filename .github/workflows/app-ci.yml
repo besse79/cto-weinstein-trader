@@ -1,0 +1,198 @@
+name: Application CI
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop]
+concurrency:
+  group: application-ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm audit --audit-level=high
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trader
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: trader
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trader -d trader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: test-password
+      PGHOST: localhost
+      PGUSER: trader
+      PGDATABASE: trader
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize schema and validate initial portfolio
+        run: |
+          psql -v ON_ERROR_STOP=1 -f sql/init.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='initial_cash'" | grep -Fx 500
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='account_type'" | grep -Fx CTO
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT value FROM settings WHERE key='paper_only'" | grep -Fx true
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 6
+      - name: Verify schema initialization is idempotent
+        run: psql -v ON_ERROR_STOP=1 -f sql/init.sql
+  docker-paper-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      POSTGRES_PASSWORD: integration-only-local-password
+      APP_TOKEN: integration-only-local-token-never-used-outside-ci
+      TEST_BASE_URL: http://127.0.0.1:3010
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Docker Compose
+        run: docker compose config --quiet
+      - name: Launch PostgreSQL and web application
+        run: docker compose up -d --wait
+      - name: Wait for HTTP readiness
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3010/ >/dev/null; then exit 0; fi
+            sleep 4
+          done
+          echo "Web application never became ready" >&2
+          exit 1
+      - name: Simulate paper buying and selling
+        run: node tests/integration-smoke.mjs
+      - name: Prepare paper stop gap fixture
+        run: node tests/stop-fixture.mjs
+      - name: Backdate synthetic paper purchase for completed daily candle
+        run: |
+          docker compose exec -T db psql -U trader -d trader -v ON_ERROR_STOP=1 -c "UPDATE orders SET created_at = now() - interval '3 days' WHERE id=(SELECT MAX(id) FROM orders WHERE side='BUY')"
+      - name: Verify gap-through-stop and duplicate prevention
+        run: node tests/stop-execution-e2e.mjs
+      - name: Diagnose failure
+        if: failure()
+        run: docker compose logs --tail=150
+      - name: Remove ephemeral test containers and volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+  yahoo-mock-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      POSTGRES_PASSWORD: yahoo-test-only
+      APP_TOKEN: yahoo-test-token
+      CI: 'true'
+      YAHOO_TEST_BASE_URL: http://host.docker.internal:5056
+      TEST_BASE_URL: http://127.0.0.1:3010
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Start isolated fake Yahoo server
+        run: |
+          node tests/mock-yahoo-server.mjs > /tmp/yahoo-mock.log 2>&1 &
+          for i in $(seq 1 20); do
+            if curl -fsS 'http://127.0.0.1:5056/v8/finance/chart/AC.PA?range=5y&interval=1d' >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/yahoo-mock.log
+          exit 1
+      - name: Start app with ephemeral PostgreSQL
+        run: docker compose up -d --wait
+      - name: Wait for application readiness
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3010/ >/dev/null; then exit 0; fi
+            sleep 4
+          done
+          docker compose logs --tail=100
+          exit 1
+      - name: Verify Yahoo import, currency benchmarks and refusal on invalid ticker
+        run: node tests/yahoo-e2e.mjs
+      - name: Verify failed import did not create audit entries
+        run: |
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 9
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM orders" | grep -Fx 0
+      - name: Test automated history recovery on isolated Yahoo mock
+        run: |
+          docker compose exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader < sql/migrations/004_market_collection.sql
+          docker compose exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader -c "DELETE FROM candles WHERE instrument_id=(SELECT id FROM instruments WHERE symbol='AC.PA')"
+          docker compose --profile automation run --rm scheduler node scripts/market-scheduler.mjs --once
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_job_runs WHERE job_type='BOOTSTRAP' AND status='SUCCESS'" | grep -Fx 1
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM candles WHERE instrument_id=(SELECT id FROM instruments WHERE symbol='AC.PA')" | awk '{if ($1<600) exit 1}'
+          docker compose exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM market_sync_audit" | grep -Fx 10
+      - name: Diagnostics
+        if: failure()
+        run: |
+          cat /tmp/yahoo-mock.log
+          docker compose logs --tail=150
+      - name: Remove test volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+  wsl-installer-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Python syntax
+        run: python3 -m py_compile deploy_local.py restore.py scripts/validate_yahoo.py
+      - name: Check host prerequisites without changing state
+        run: python3 deploy_local.py --check
+      - name: Start CTO application with local installer
+        run: python3 deploy_local.py
+      - name: Validate Yahoo diagnostics safely without import
+        run: python3 scripts/validate_yahoo.py
+      - name: Verify paper dashboard
+        run: |
+          curl -fsS http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500 and d["cash"]==500'
+      - name: Run installer again to produce verified PostgreSQL backup
+        run: python3 deploy_local.py
+      - name: Verify 26-instrument universe added idempotently
+        run: |
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 26
+          docker compose -p cto_weinstein exec -T db psql -v ON_ERROR_STOP=1 -U trader -d trader < sql/migrations/003_french_large_caps.sql
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments" | grep -Fx 26
+      - name: Verify EUR benchmark migrated exactly once
+        run: |
+          docker compose -p cto_weinstein exec -T db psql -U trader -d trader -Atc "SELECT COUNT(*) FROM instruments WHERE symbol='EXSA.DE' AND currency='EUR'" | grep -Fx 1
+      - name: Verify rollback archive without modifying database
+        run: |
+          latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
+          python3 restore.py "$latest"
+          test -s "$latest/postgres.dump"
+      - name: Test explicit rollback on isolated CI database
+        run: |
+          latest="$(ls -dt "$HOME"/cto-weinstein-backups/* | head -1)"
+          printf 'RESTORE\n' | python3 restore.py "$latest" --apply
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3010/api/dashboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["mode"]=="PAPER" and d["initial"]==500'; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Diagnose installer failure
+        if: failure()
+        run: docker compose -p cto_weinstein logs --tail=120
+      - name: Remove temporary CTO test containers
+        if: always()
+        run: docker compose -p cto_weinstein down --volumes --remove-orphans

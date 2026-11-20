@@ -1,0 +1,158 @@
+import assert from 'node:assert/strict';
+const base=process.env.TEST_BASE_URL||'http://127.0.0.1:3010';
+const token=process.env.APP_TOKEN;
+assert.ok(token);
+async function post(path,body,auth=true){
+ const r=await fetch(base+path,{method:'POST',
+  headers:{'Content-Type':'application/json',...(auth?{'x-app-token':token}:{})},
+  body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
+ return {status:r.status,json:await r.json()};
+}
+const noHistoryResponse=await fetch(base+'/api/instrument/AC.PA');
+assert.equal(noHistoryResponse.status,200);
+const noHistory=await noHistoryResponse.json();
+assert.equal(noHistory.assessment.signal,'NO_DATA');
+assert.equal(noHistory.assessment.eligible,false);
+assert.equal(noHistory.watch,null);
+assert.ok(!noHistory.historical || noHistory.historical.weeks.length===0);
+assert.deepEqual(noHistory.series,[]);
+let r=await post('/api/market/sync',{all:true},false);
+assert.equal(r.status,401);
+r=await post('/api/market/sync',{symbol:'NOTINDB'});
+assert.equal(r.status,404);
+r=await post('/api/market/sync',{all:true});
+assert.equal(r.status,200,JSON.stringify(r));
+assert.equal(r.json.provider,'YAHOO_MOCK');
+assert.equal(r.json.mode,'PAPER');
+assert.equal(r.json.results.length,6);
+assert.ok(r.json.total>5000);
+for(const item of r.json.results){
+ assert.ok(item.count>600,item.symbol);
+ assert.ok(item.last<=new Date().toISOString().slice(0,10));
+}
+const candidatesResponse=await fetch(base+'/api/paper-candidates');
+assert.equal(candidatesResponse.status,200);
+const mondayCandidates=await candidatesResponse.json();
+assert.equal(mondayCandidates.mode,'PAPER');
+assert.equal(mondayCandidates.cash,500);
+assert.ok(Array.isArray(mondayCandidates.candidates));
+assert.ok(mondayCandidates.candidates.every(x=>x.currency==='EUR'));
+assert.ok(mondayCandidates.candidates.every(x=>!x.eligible||
+ (x.signal==='PHASE2_BREAKOUT'&&x.quantity>=1&&x.quoteDay)));
+const noBuy=await fetch(base+'/api/local-actions',{method:'POST',
+ headers:{'Content-Type':'application/json',Origin:'http://127.0.0.1:3010'},
+ body:JSON.stringify({action:'buy',symbol:'UNKNOWN.PA'})});
+assert.equal(noBuy.status,409,'Unknown instrument cannot become a PAPER purchase');
+const noAuthBuy=await post('/api/paper-entry',{symbol:'AC.PA'},false);
+assert.equal(noAuthBuy.status,401,'Internal PAPER entry endpoint requires server token');
+const portfolioResponse=await fetch(base+'/api/portfolio-backtest?weeks=12');
+assert.equal(portfolioResponse.status,200,'Multi-asset portfolio API must return success');
+const portfolio=await portfolioResponse.json();
+assert.equal(portfolio.result.mode,'PAPER_PORTFOLIO_BACKTEST');
+assert.equal(portfolio.result.initialCash,500);
+assert.equal(portfolio.result.maxPositions,4);
+assert.equal(portfolio.result.holdWeeks,12);
+assert.equal(portfolio.result.symbolsAnalyzed,4);
+assert.ok(portfolio.result.equityCurve.length>100);
+assert.ok(portfolio.result.equityCurve.every(p=>p.cash>=-1e-7&&p.openPositions<=4));
+assert.ok(portfolio.result.trades.every(t=>t.entryWeek>t.signalWeek));
+assert.equal((await fetch(base+'/api/portfolio-backtest?weeks=13')).status,400);
+console.log('PASS consolidated 500 EUR portfolio analysis, no future entries or negative cash');
+const scannerResponse=await fetch(base+'/api/scanner');
+assert.equal(scannerResponse.status,200);
+const scanner=await scannerResponse.json();
+assert.equal(scanner.benchmarkByCurrency.EUR,'EXSA.DE');
+assert.equal(scanner.benchmarkByCurrency.USD,'SPY');
+assert.equal(scanner.results.length,4);
+for(const x of scanner.results){
+ assert.equal(x.benchmark,'EXSA.DE');
+ assert.notEqual(x.signal,'NO_DATA');
+ assert.notEqual(x.signal,'STALE_DATA');
+ assert.ok(typeof x.watchScore==='number',x.symbol+' has numeric watch score');
+ assert.ok(['PROVISIONAL_BREAKOUT','NEAR_RESISTANCE','WATCH'].includes(x.watchStatus));
+}
+const detailResponse=await fetch(base+'/api/instrument/AC.PA');
+assert.equal(detailResponse.status,200);
+const detail=await detailResponse.json();
+assert.equal(detail.instrument.symbol,'AC.PA');
+assert.equal(detail.instrument.currency,'EUR');
+assert.equal(detail.benchmark,'EXSA.DE');
+assert.equal(detail.marketStatus,'READY');
+assert.ok(detail.series.length>=100,'Weekly price chart needs at least 100 complete weeks');
+assert.ok(detail.series.at(-1).ma30>0);
+assert.ok(detail.series.at(-1).volumeAvg10>0);
+assert.ok(detail.levels.resistance26>0 && detail.levels.support8>0);
+assert.equal(detail.assessment.eligible,false,'Chart must not trigger broker/paper orders');
+assert.ok(detail.watch&&typeof detail.watch.watchScore==='number');
+assert.ok(Number.isFinite(detail.watch.currentResistance));
+assert.ok(Array.isArray(detail.watch.watchReasons));
+assert.ok(Array.isArray(detail.assessment.reasons));
+assert.ok(detail.historical&&Array.isArray(detail.historical.weeks));
+assert.ok(detail.historical.weeks.length>=100);
+assert.ok(detail.historical.weeks.every(w=>w.week < new Date().toISOString().slice(0,10)));
+assert.equal(detail.historical.forwardOutcomes.length,3);
+assert.equal(detail.historical.forwardOutcomes[0].weeks,4);
+assert.ok(detail.historical.note.includes('semaine'));
+assert.ok(detail.explanation.includes('reconstitue des régimes heuristiques'));
+const riskResponse=await fetch(base+'/api/instrument/AC.PA/backtest?weeks=12');
+assert.equal(riskResponse.status,200);
+const risk=await riskResponse.json();
+assert.equal(risk.result.mode,'PAPER_BACKTEST');
+assert.equal(risk.result.initialCash,500);
+assert.equal(risk.instrument.currency,'EUR');
+assert.ok(Array.isArray(risk.result.trades));
+assert.ok(risk.result.trades.every(t=>t.entryWeek>t.signalWeek));
+assert.equal(risk.result.holdWeeks,12);
+const badHorizon=await fetch(base+'/api/instrument/AC.PA/backtest?weeks=7');
+assert.equal(badHorizon.status,400);
+const usdBlocked=await fetch(base+'/api/instrument/SPY/backtest');
+assert.equal(usdBlocked.status,422);
+const missingRisk=await fetch(base+'/api/instrument/UNKNOWN.PA/backtest');
+assert.equal(missingRisk.status,404);
+const missing=await fetch(base+'/api/instrument/UNKNOWN.PA');
+assert.equal(missing.status,404);
+const bad=await fetch(base+'/api/instrument/%3Cbad%3E');
+assert.equal(bad.status,400);
+console.log('PASS instrument detail weekly chart, price/volume metrics, safe empty market, input validation');
+const universe=await (await fetch(base+'/api/universe')).json();
+assert.equal(universe.count,6);
+assert.equal(universe.batches[0].symbols.length,6);
+assert.ok(universe.batches[0].instruments.every(i=>i.bars>600));
+r=await post('/api/market/sync',{symbols:['AC.PA','LR.PA']});
+assert.equal(r.status,200,'Explicit manual 2-symbol batch must work');
+assert.equal(r.json.results.length,2);
+r=await post('/api/market/sync',{symbols:['AC.PA','BAD.PA']});
+assert.equal(r.status,404,'Unknown member blocks entire batch');
+r=await post('/api/market/sync',{symbols:['AC.PA','AC.PA']});
+assert.equal(r.status,400,'Duplicate symbols must be refused');
+r=await post('/api/market/sync',{symbols:Array(7).fill('AC.PA')});
+assert.equal(r.status,400,'No more than six tickers per request');
+async function localAction(body,origin='http://127.0.0.1:3010'){
+ const response=await fetch(base+'/api/local-actions',{method:'POST',headers:{
+  'Content-Type':'application/json',...(origin?{Origin:origin}:{})
+ },body:JSON.stringify(body)});
+ return {status:response.status,json:await response.json()};
+}
+let local=await localAction({action:'sync',symbols:['AC.PA']},null);
+assert.equal(local.status,403,'Missing browser origin must be refused');
+local=await localAction({action:'sync',symbols:['AC.PA']},'https://untrusted.example');
+assert.equal(local.status,403,'Cross-site caller must be refused');
+local=await localAction({action:'sync',symbols:['BAD.PA']});
+assert.equal(local.status,404,'Local UI action retains existing whitelist validation');
+local=await localAction({action:'sync',symbols:['AC.PA']});
+assert.equal(local.status,200,'Local same-origin UI can import without sending APP_TOKEN');
+assert.equal(local.json.results.length,1);
+local=await localAction({action:'withdraw',symbols:['AC.PA']});
+assert.equal(local.status,400,'Local UI endpoint only supports explicit PAPER actions');
+const dashboard=await (await fetch(base+'/api/dashboard')).json();
+assert.equal(dashboard.mode,'PAPER');
+assert.equal(dashboard.initial,500);
+assert.equal(dashboard.cash,500);
+assert.equal(dashboard.orders.length,0);
+console.log('PASS 6 symbols, 4 EUR signals, 500 EUR paper capital');
+const provider=await fetch('http://127.0.0.1:5056/__test__/fail?symbol=SU.PA');
+assert.equal(provider.status,200);
+r=await post('/api/market/sync',{all:true});
+assert.equal(r.status,502,'Wrong symbol must block full batch');
+assert.equal(r.json.paperOnly,true);
+console.log('PASS wrong Yahoo ticker prevents batch writes');
