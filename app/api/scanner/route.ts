@@ -10,7 +10,7 @@ const BAR_SQL="SELECT day::text AS day,open::float8 AS open,high::float8 AS high
 export async function GET(){
  try{
   const now=new Date(),asOf=now.toISOString().slice(0,10);
-  const all=(await pool.query("SELECT id,symbol,name,currency FROM instruments ORDER BY symbol")).rows;
+  const all=(await pool.query("SELECT id,symbol,name,currency FROM instruments WHERE currency IN ('EUR','USD') ORDER BY symbol")).rows;
   const benchmarks=new Map<string,unknown[]>();
   for(const [currency,symbol] of Object.entries(BENCHMARK_BY_CURRENCY)){
    const reference=all.find(i=>i.symbol===symbol&&i.currency===currency);
