@@ -1,6 +1,6 @@
 import {sizePaperPosition} from './paper-risk.mjs';
 
-const parseDay=day=>typeof day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&Number.isFinite(Date.parse(day+'T12:00:00Z'));
+const parseDay=day=>typeof day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&\n Number.isFinite(Date.parse(day+'T12:00:00Z'))&&\n new Date(day+'T12:00:00Z').toISOString().slice(0,10)===day;
 const weeksMonday=day=>{
  const d=new Date(day+'T12:00:00Z');
  d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
@@ -37,10 +37,9 @@ export function screenPaperCandidates(scanner,dashboard,{
  const remainingSlots=Math.max(0,4-positions.length);
  const available=Math.max(0,dashboard.cash);
  const benchmarkFresh=age(benchmarkDay)>=0&&age(benchmarkDay)<=4;
- const candidates=scanner.results.filter(x=>x.currency==='EUR')
+ const counts=new Map();\n for(const item of scanner.results){\n  if(item?.currency==='EUR'&&typeof item.symbol==='string')\n   counts.set(item.symbol,(counts.get(item.symbol)||0)+1);\n }\n const candidates=scanner.results.filter(x=>x.currency==='EUR')
  .map(x=>{
-  const reasons=[];
-  const last=x.last;
+  const reasons=[];\n  if(typeof x.symbol!=='string'||!x.symbol||counts.get(x.symbol)!==1)\n   reasons.push('DUPLICATE_OR_INVALID_SYMBOL');\n  const last=x.last;
   const signalDay=x.asOf; // Last COMPLETED WEEK's trading date from scanWeinstein.
   const signalWeek=parseDay(signalDay)?weeksMonday(signalDay):null;
   if(!benchmarkFresh)reasons.push('BENCHMARK_STALE');
