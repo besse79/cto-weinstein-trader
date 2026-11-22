@@ -46,7 +46,16 @@ export function compareWeinsteinSignals(w,mkd){
   'stageRank','setupScore','lastCompletedClose','ma30','prevMa30','priorHigh',
   'relativeStrength','volumeRatio','supportCandidate','hasBaseForBreakout',
   'breakout','rising','aboveMa'];
- const bySymbol=xs=>new Map(xs.map(x=>[x.symbol,x]));
+ const bySymbol=xs=>{
+  const result=new Map();
+  for(const row of xs){
+   if(!row||typeof row.symbol!=='string'||!row.symbol.trim()||
+      row.symbol!==row.symbol.trim()||result.has(row.symbol))
+    throw new Error('Invalid or duplicate Weinstein signal symbol');
+   result.set(row.symbol,row);
+  }
+  return result;
+ };
  const a=bySymbol(w),b=bySymbol(mkd);
  const differences=[];
  for(const symbol of new Set([...a.keys(),...b.keys()])){
