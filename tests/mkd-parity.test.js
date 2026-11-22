@@ -58,3 +58,10 @@ test('Weinstein signals compare relative strength and MM30, not stage label alon
  assert.equal(r.status,'NO_PARITY');
  assert.ok(r.differences.some(d=>d.field==='relativeStrength'));
 });
+
+test('duplicate or invalid signal symbols cannot certify MKD parity',()=>{
+ const valid={symbol:'AC.PA',currency:'EUR',signal:'PHASE2_BREAKOUT'};
+ assert.throws(()=>compareWeinsteinSignals([valid,valid],[valid]),/duplicate/);
+ assert.throws(()=>compareWeinsteinSignals([valid],[valid,{...valid,symbol:' '}]),/Invalid/);
+ assert.throws(()=>compareWeinsteinSignals([valid],[null]),/Invalid/);
+});
