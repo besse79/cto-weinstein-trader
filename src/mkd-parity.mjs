@@ -12,7 +12,10 @@ export function compareMarketSeries(local,mkd,{
  const rows=series=>{
   const byDay=new Map();
   for(const x of series){
-   if(!/^\d{4}-\d{2}-\d{2}$/.test(x?.day)||byDay.has(x.day))
+   if(typeof x?.day!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(x.day)||
+      !Number.isFinite(Date.parse(x.day+'T00:00:00Z'))||
+      new Date(x.day+'T00:00:00Z').toISOString().slice(0,10)!==x.day||
+      byDay.has(x.day))
     throw new Error('Invalid or duplicate daily session');
    byDay.set(x.day,x);
   }
@@ -25,13 +28,14 @@ export function compareMarketSeries(local,mkd,{
   const a=w.get(day),b=m.get(day);
   if(!a||!b){issues.push({day,type:!a?'MISSING_W':'MISSING_MKD'});continue}
   for(const field of ['open','high','low','close']){
-   const x=Number(a[field]),y=Number(b[field]);
-   if(!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x-y)>priceTolerance)
+   const x=a[field],y=b[field];
+   if(typeof x!=='number'||typeof y!=='number'||
+      !Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x-y)>priceTolerance)
     issues.push({day,type:'PRICE_MISMATCH',field,w:a[field],mkd:b[field]});
   }
-  if(!Number.isSafeInteger(Number(a.volume))||
-     !Number.isSafeInteger(Number(b.volume))||
-     Math.abs(Number(a.volume)-Number(b.volume))>volumeTolerance)
+  if(!Number.isSafeInteger(a.volume)||a.volume<0||
+     !Number.isSafeInteger(b.volume)||b.volume<0||
+     Math.abs(a.volume-b.volume)>volumeTolerance)
    issues.push({day,type:'VOLUME_MISMATCH',w:a.volume,mkd:b.volume});
   if(a.currency&&b.currency&&a.currency!==b.currency)
    issues.push({day,type:'CURRENCY_MISMATCH',w:a.currency,mkd:b.currency});
