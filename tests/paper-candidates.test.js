@@ -90,3 +90,13 @@ test('Friday cannot treat its own still-open ISO week as a completed signal',()=
  assert.equal(summary.eligibleCount,0);
  assert.ok(summary.candidates[0].reasons.includes('SIGNAL_NOT_PREVIOUS_WEEK'));
 });
+
+test('duplicate scanner symbols cannot create duplicate PAPER candidates',()=>{
+ const result=run([make('AC.PA'),make('AC.PA',{id:2})]);
+ assert.equal(result.eligibleCount,0);
+ assert.ok(result.candidates.every(x=>x.reasons.includes('DUPLICATE_OR_INVALID_SYMBOL')));
+ assert.ok(result.candidates.every(x=>x.orderAllowed===false));
+});
+test('invalid ISO calendar dates fail closed',()=>{
+ assert.throws(()=>run([make()],{asOf:'2026-02-30'}),/Invalid/);
+});
