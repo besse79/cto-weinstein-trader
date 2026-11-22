@@ -12,25 +12,30 @@ export function compareMarketSeries(local,mkd,{
  const rows=series=>{
   const byDay=new Map();
   for(const x of series){
-   if(!/^\d{4}-\d{2}-\d{2}$/.test(x?.day)||byDay.has(x.day))
+   if(typeof x?.day!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(x.day)||
+      !Number.isFinite(Date.parse(x.day+'T00:00:00Z'))||
+      new Date(x.day+'T00:00:00Z').toISOString().slice(0,10)!==x.day||
+      byDay.has(x.day))
     throw new Error('Invalid or duplicate daily session');
    byDay.set(x.day,x);
   }
   return byDay;
  };
  const w=rows(local),m=rows(mkd);
+ if(w.size===0||m.size===0)throw new Error('Nonempty market series required for parity');
  let verified=0;
  for(const day of new Set([...w.keys(),...m.keys()])){
   const a=w.get(day),b=m.get(day);
   if(!a||!b){issues.push({day,type:!a?'MISSING_W':'MISSING_MKD'});continue}
   for(const field of ['open','high','low','close']){
-   const x=Number(a[field]),y=Number(b[field]);
-   if(!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x-y)>priceTolerance)
+   const x=a[field],y=b[field];
+   if(typeof x!=='number'||typeof y!=='number'||
+      !Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x-y)>priceTolerance)
     issues.push({day,type:'PRICE_MISMATCH',field,w:a[field],mkd:b[field]});
   }
-  if(!Number.isSafeInteger(Number(a.volume))||
-     !Number.isSafeInteger(Number(b.volume))||
-     Math.abs(Number(a.volume)-Number(b.volume))>volumeTolerance)
+  if(!Number.isSafeInteger(a.volume)||a.volume<0||
+     !Number.isSafeInteger(b.volume)||b.volume<0||
+     Math.abs(a.volume-b.volume)>volumeTolerance)
    issues.push({day,type:'VOLUME_MISMATCH',w:a.volume,mkd:b.volume});
   if(a.currency&&b.currency&&a.currency!==b.currency)
    issues.push({day,type:'CURRENCY_MISMATCH',w:a.currency,mkd:b.currency});
@@ -46,8 +51,18 @@ export function compareWeinsteinSignals(w,mkd){
   'stageRank','setupScore','lastCompletedClose','ma30','prevMa30','priorHigh',
   'relativeStrength','volumeRatio','supportCandidate','hasBaseForBreakout',
   'breakout','rising','aboveMa'];
- const bySymbol=xs=>new Map(xs.map(x=>[x.symbol,x]));
+ const bySymbol=xs=>{
+  const result=new Map();
+  for(const row of xs){
+   if(!row||typeof row.symbol!=='string'||!row.symbol.trim()||
+      row.symbol!==row.symbol.trim()||result.has(row.symbol))
+    throw new Error('Invalid or duplicate Weinstein signal symbol');
+   result.set(row.symbol,row);
+  }
+  return result;
+ };
  const a=bySymbol(w),b=bySymbol(mkd);
+ if(a.size===0||b.size===0)throw new Error('Nonempty Weinstein signals required for parity');
  const differences=[];
  for(const symbol of new Set([...a.keys(),...b.keys()])){
   const left=a.get(symbol),right=b.get(symbol);
@@ -73,7 +88,8 @@ export function compareBacktestOutputs(local,mkd,{tolerance=0.00001}={}){
   local.mode!=='PAPER_PORTFOLIO_BACKTEST'||
   mkd.mode!=='PAPER_PORTFOLIO_BACKTEST'||
   !Array.isArray(local.equityCurve)||!Array.isArray(mkd.equityCurve)||
-  !Array.isArray(local.trades)||!Array.isArray(mkd.trades))
+  !Array.isArray(local.trades)||!Array.isArray(mkd.trades)||
+  local.equityCurve.length===0||mkd.equityCurve.length===0)
   throw new Error('Two PAPER backtest results are required');
  const differences=[];
  const metrics=['initialCash','finalCash','finalEquity','returnPct',

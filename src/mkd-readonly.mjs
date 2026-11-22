@@ -59,8 +59,12 @@ export function validateMkdBars(document,{currency,asOf,start,end}){
   document.items.length>1000)throw new MkdInvalidData('MKD certified bars missing or over limit');
  const dates=new Set();
  const bars=[];
+ let previousDay=null;
  for(const b of document.items){
   const day=dateDay(b.date);
+  if(previousDay!==null&&day<=previousDay)
+   throw new MkdInvalidData('MKD bars must be strictly chronological');
+  previousDay=day;
   if(day<start||day>end||day>asOf.slice(0,10)||dates.has(day)||!CURRENCY.has(b.currency)||
      b.currency!==currency||!Number.isSafeInteger(b.volume)||b.volume<0)
    throw new MkdInvalidData('MKD bar identity, currency, or volume invalid');
@@ -80,7 +84,6 @@ export function validateMkdBars(document,{currency,asOf,start,end}){
     close:prices[3],volume:b.volume,provider:b.provider,
     revision:b.revision,publishedAt:b.published_at,firstAvailableAt:b.first_available_at});
  }
- bars.sort((a,b)=>a.day.localeCompare(b.day));
  return bars;
 }
 export async function fetchMkdBars({baseUrl,symbol,mic,start,end,asOf,

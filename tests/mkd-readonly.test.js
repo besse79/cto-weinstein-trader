@@ -89,3 +89,9 @@ test('reject future as_of and unavailable FX, never infer a default price',async
   date:'2026-11-13',asOf:'2026-11-17T00:00:00Z',
   now,fetchImpl:async()=>{throw Error('Not called')}}),/Future MKD/);
 });
+
+test('out-of-order MKD bars fail closed rather than being silently reordered',()=>{
+ const later={...validBar,date:'2026-11-14',published_at:'2026-11-14T10:00:00Z',first_available_at:'2026-11-14T10:00:00Z'};
+ assert.throws(()=>validateMkdBars({items:[later,validBar]},{
+   currency:'EUR',asOf,start:'2026-11-13',end:'2026-11-14'}),/chronological/);
+});
