@@ -19,6 +19,7 @@ export function compareMarketSeries(local,mkd,{
   return byDay;
  };
  const w=rows(local),m=rows(mkd);
+ if(w.size===0||m.size===0)throw new Error('Nonempty market series required for parity');
  let verified=0;
  for(const day of new Set([...w.keys(),...m.keys()])){
   const a=w.get(day),b=m.get(day);
@@ -57,6 +58,7 @@ export function compareWeinsteinSignals(w,mkd){
   return result;
  };
  const a=bySymbol(w),b=bySymbol(mkd);
+ if(a.size===0||b.size===0)throw new Error('Nonempty Weinstein signals required for parity');
  const differences=[];
  for(const symbol of new Set([...a.keys(),...b.keys()])){
   const left=a.get(symbol),right=b.get(symbol);
@@ -82,7 +84,8 @@ export function compareBacktestOutputs(local,mkd,{tolerance=0.00001}={}){
   local.mode!=='PAPER_PORTFOLIO_BACKTEST'||
   mkd.mode!=='PAPER_PORTFOLIO_BACKTEST'||
   !Array.isArray(local.equityCurve)||!Array.isArray(mkd.equityCurve)||
-  !Array.isArray(local.trades)||!Array.isArray(mkd.trades))
+  !Array.isArray(local.trades)||!Array.isArray(mkd.trades)||
+  local.equityCurve.length===0||mkd.equityCurve.length===0)
   throw new Error('Two PAPER backtest results are required');
  const differences=[];
  const metrics=['initialCash','finalCash','finalEquity','returnPct',
