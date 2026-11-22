@@ -76,3 +76,11 @@ test('empty backtest equity curves cannot certify parity',()=>{
  const base={mode:'PAPER_PORTFOLIO_BACKTEST',equityCurve:[],trades:[]};
  assert.throws(()=>compareBacktestOutputs(base,structuredClone(base)),/required/);
 });
+
+test('invalid calendar dates and coerced prices cannot certify parity',()=>{
+ assert.throws(()=>compareMarketSeries([bar('2026-02-30')],[bar('2026-02-30')]),/Invalid/);
+ const valid=bar('2026-11-13');
+ assert.equal(compareMarketSeries([valid],[{...valid,close:'100'}]).status,'NO_PARITY');
+ assert.equal(compareMarketSeries([valid],[{...valid,volume:null}]).status,'NO_PARITY');
+ assert.equal(compareMarketSeries([valid],[{...valid,volume:-1}]).status,'NO_PARITY');
+});
