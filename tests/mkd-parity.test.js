@@ -65,3 +65,14 @@ test('duplicate or invalid signal symbols cannot certify MKD parity',()=>{
  assert.throws(()=>compareWeinsteinSignals([valid],[valid,{...valid,symbol:' '}]),/Invalid/);
  assert.throws(()=>compareWeinsteinSignals([valid],[null]),/Invalid/);
 });
+
+test('empty market or signal inputs cannot certify parity',()=>{
+ assert.throws(()=>compareMarketSeries([],[]),/Nonempty/);
+ assert.throws(()=>compareMarketSeries([bar('2026-11-13')],[]),/Nonempty/);
+ assert.throws(()=>compareWeinsteinSignals([],[]),/Nonempty/);
+ assert.throws(()=>compareWeinsteinSignals([{symbol:'AC.PA'}],[]),/Nonempty/);
+});
+test('empty backtest equity curves cannot certify parity',()=>{
+ const base={mode:'PAPER_PORTFOLIO_BACKTEST',equityCurve:[],trades:[]};
+ assert.throws(()=>compareBacktestOutputs(base,structuredClone(base)),/required/);
+});
