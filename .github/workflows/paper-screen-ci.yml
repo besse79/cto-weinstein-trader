@@ -23,4 +23,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/paper-candidates.test.js tests/paper-risk.test.js
+      - name: Run complete JavaScript regression suite
+        run: npm test
