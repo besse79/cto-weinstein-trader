@@ -1,0 +1,25 @@
+name: Trading Factory cto-weinstein-trader WSL smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/trading-factory-runner-smoke.yml']
+permissions:
+  contents: read
+concurrency:
+  group: trading-factory-weinstein-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: [self-hosted, trading-factory, weinstein, wsl]
+    timeout-minutes: 5
+    steps:
+      - name: Read-only WSL runner smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner=${RUNNER_NAME}"
+          echo "python=$(python3 --version)"
+          echo "cpu=$(nproc)"
+          echo "free_disk_kib=$(df -Pk "$HOME" | awk 'END{print $4}')"
+          echo "SMOKE_OK"
