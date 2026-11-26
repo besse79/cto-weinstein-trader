@@ -44,7 +44,7 @@ export function screenPaperCandidates(scanner,dashboard,{
   if(item?.currency==='EUR'&&typeof item.symbol==='string')
    counts.set(item.symbol,(counts.get(item.symbol)||0)+1);
  }
- const candidates=scanner.results.filter(x=>x.currency==='EUR')
+ const candidates=scanner.results.filter(x=>x?.currency==='EUR')
  .map(x=>{
   const reasons=[];
   if(typeof x.symbol!=='string'||!x.symbol||counts.get(x.symbol)!==1)
@@ -57,7 +57,7 @@ export function screenPaperCandidates(scanner,dashboard,{
   if(!last||age(last.day)<0||age(last.day)>4)reasons.push('QUOTE_STALE');
   if(!last||last.day<requiredPriorClose)reasons.push('PREVIOUS_WEEK_QUOTE_INCOMPLETE');
   if(!x.eligible||x.signal!=='PHASE2_BREAKOUT')reasons.push('NO_CONFIRMED_BREAKOUT');
-  if(signalWeek!==previousMonday)reasons.push('SIGNAL_NOT_PREVIOUS_WEEK');
+  if(signalWeek!==previousMonday||signalDay!==requiredPriorClose)reasons.push('SIGNAL_NOT_PREVIOUS_WEEK');
   if(held.has(x.symbol))reasons.push('ALREADY_HELD');
   if(remainingSlots<1)reasons.push('MAX_POSITIONS');
   if(!Number.isFinite(x.supportCandidate)||x.supportCandidate<=0)reasons.push('STOP_UNAVAILABLE');
@@ -79,7 +79,7 @@ export function screenPaperCandidates(scanner,dashboard,{
    orderReasons:!orderWindowOpen?['MARKET_CLOSED_WEEKEND']:[],reasons};
  }).sort((a,b)=>Number(b.eligible)-Number(a.eligible)||
   (b.relativeStrength??-Infinity)-(a.relativeStrength??-Infinity)||
-  a.symbol.localeCompare(b.symbol));
+  String(a.symbol??'').localeCompare(String(b.symbol??'')));
  return {mode:'PAPER',asOf,initialCash:dashboard.initial,
   cash:dashboard.cash,equity:dashboard.equity,positionsOpen:positions.length,
   benchmarkDay,benchmarkFresh,signalWeekExpected:previousMonday,
