@@ -100,3 +100,8 @@ test('duplicate scanner symbols cannot create duplicate PAPER candidates',()=>{
 test('invalid ISO calendar dates fail closed',()=>{
  assert.throws(()=>run([make()],{asOf:'2026-02-30'}),/Invalid/);
 });
+
+test('Thursday signal cannot be certified by Friday quote',()=>{
+ const r=run([make('AC.PA',{asOf:'2026-11-12'})]);
+ assert.equal(r.eligibleCount,0);
+});
