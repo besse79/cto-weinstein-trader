@@ -62,7 +62,8 @@ export function screenPaperCandidates(scanner,dashboard,{
   if(remainingSlots<1)reasons.push('MAX_POSITIONS');
   if(!Number.isFinite(x.supportCandidate)||x.supportCandidate<=0)reasons.push('STOP_UNAVAILABLE');
   // Current quote is a last COMPLETED close, not a prediction of Monday open.
-  const price=Number(last?.close);
+  const price=Number.isFinite(last?.close)?last.close:NaN;
+  if(!Number.isFinite(price)||price<=0)reasons.push('INVALID_QUOTE_PRICE');
   const stop=Number(x.supportCandidate);
   const allocation=reasons.length===0?sizePaperPosition({
    cash:available,entry:price,stop,fee,riskFraction:0.01,maxAllocationFraction:0.25
