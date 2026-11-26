@@ -105,3 +105,9 @@ test('Thursday signal cannot be certified by Friday quote',()=>{
  const r=run([make('AC.PA',{asOf:'2026-11-12'})]);
  assert.equal(r.eligibleCount,0);
 });
+
+test('coercible nonnumeric quote cannot authorize PAPER order',()=>{
+ const r=run([make('AC.PA',{last:{day:friday,close:'100'}})]);
+ assert.equal(r.eligibleCount,0);
+ assert.ok(r.candidates[0].reasons.includes('INVALID_QUOTE_PRICE'));
+});
