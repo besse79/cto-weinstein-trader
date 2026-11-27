@@ -1,0 +1,29 @@
+name: cto-weinstein-trader WSL acceptance
+on:
+  push:
+    branches: [fix/v4-paper-duplicate-candidates-20261122]
+    paths: ['.github/workflows/wsl-acceptance.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify WSL and test isolated checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qi microsoft /proc/sys/kernel/osrelease
+          npm ci --no-audit --no-fund
+          npm test
+          npm run typecheck
+          npm run build
+      - name: Verify shared MKD access without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 10 http://127.0.0.1:8100/health/live
+          PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=15000' psql -X -v ON_ERROR_STOP=1 -h /var/run/postgresql -p 5433 -d market_data_hub -c "SELECT currency, quality_status, count(*) FROM public.eod_bars WHERE currency IN ('EUR','USD') GROUP BY currency, quality_status"
