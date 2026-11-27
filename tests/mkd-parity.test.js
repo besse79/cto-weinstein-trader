@@ -58,3 +58,18 @@ test('Weinstein signals compare relative strength and MM30, not stage label alon
  assert.equal(r.status,'NO_PARITY');
  assert.ok(r.differences.some(d=>d.field==='relativeStrength'));
 });
+
+test('empty inputs cannot certify migration parity',()=>{
+ assert.equal(compareMarketSeries([],[]).status,'NO_PARITY');
+ assert.equal(compareWeinsteinSignals([],[]).status,'NO_PARITY');
+});
+test('null and negative data cannot certify parity even if both sources agree',()=>{
+ for(const bad of [{close:null},{volume:null},{volume:-1},{close:0}]){
+  const row={...bar('2026-11-13'),...bad};
+  assert.equal(compareMarketSeries([row],[row]).status,'NO_PARITY');
+ }
+});
+test('duplicate signal cannot silently overwrite a candidate',()=>{
+ const row={symbol:'AC.PA'};
+ assert.throws(()=>compareWeinsteinSignals([row,row],[row]),/duplicate/);
+});
