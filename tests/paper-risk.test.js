@@ -19,3 +19,8 @@ test('intraday stop and invalid OHLC',()=>{
  assert.equal(simulateLongStop({stop:18,open:19,low:17,high:20}).fill,18);
  assert.equal(simulateLongStop({stop:18,open:19,low:20,high:21}).reason,'INVALID_CANDLE');
 });
+
+test('reject quantities beyond safe integer precision',()=>{
+ const r=sizePaperPosition({cash:500,entry:1e-20,stop:9e-21});
+ assert.deepEqual(r,{eligible:false,reason:'UNSAFE_QUANTITY'});
+});
