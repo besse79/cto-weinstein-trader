@@ -6,6 +6,7 @@ import {assessWatch} from '../../../src/weinstein-watch.mjs';
 export const dynamic='force-dynamic';
 
 const BENCHMARK_BY_CURRENCY:Record<string,string>={EUR:'EXSA.DE',USD:'SPY'};
+const EXCLUDED_SYMBOLS=['KESKOBU0126.HE','VSURE.ST','VYLR'];
 const BAR_SQL="SELECT day::text AS day,open::float8 AS open,high::float8 AS high,low::float8 AS low,close::float8 AS close,volume::int AS volume FROM candles WHERE instrument_id=$1 AND day<=CURRENT_DATE ORDER BY day";
 const BATCH_SQL="SELECT instrument_id,day::text AS day,open::float8 AS open,high::float8 AS high,low::float8 AS low,close::float8 AS close,volume::int AS volume FROM candles WHERE instrument_id=ANY($1::bigint[]) AND day<=CURRENT_DATE ORDER BY instrument_id,day";
 const MAX_ASSETS_PER_READ=24; // Limit heap, avoid 1,100 sequential SQL requests.
@@ -20,9 +21,9 @@ export async function GET(request?:Request){
    return Response.json({error:'Unsupported currency filter'},{status:400});
   const now=new Date(),asOf=parisClock(now).day;
   const all=(await pool.query(
-   currency?"SELECT id,symbol,name,currency FROM instruments WHERE currency=$1 ORDER BY symbol":
-   "SELECT id,symbol,name,currency FROM instruments ORDER BY symbol",
-   currency?[currency]:[])).rows;
+   currency?"SELECT id,symbol,name,currency FROM instruments WHERE currency=$1 AND NOT (symbol = ANY($2::text[])) ORDER BY symbol":
+   "SELECT id,symbol,name,currency FROM instruments WHERE currency IN ('EUR','USD') AND NOT (symbol = ANY($1::text[])) ORDER BY symbol",
+   currency?[currency,EXCLUDED_SYMBOLS]:[EXCLUDED_SYMBOLS])).rows;
   const benchmarks=new Map<string,unknown[]>();
   for(const [currency,symbol] of Object.entries(BENCHMARK_BY_CURRENCY)){
    if(request&&new URL(request.url).searchParams.get('currency')!==null&&
