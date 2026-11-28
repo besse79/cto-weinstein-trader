@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Verify an installer backup or explicitly restore the paper PostgreSQL database."""
 import argparse
+from datetime import datetime,timezone
+import secrets
 import hashlib
 from pathlib import Path
 import subprocess
@@ -44,13 +46,53 @@ def main():
         if not dump.exists():raise RuntimeError("No pre-existing database dump in this first-install backup")
         if input("Type RESTORE to overwrite local paper DB and source: ")!="RESTORE":
             raise RuntimeError("Restore cancelled")
-        # Prevent the scheduled collector writing while the database is restored.
+        # Always restore into a NEW database first. Attempting --clean on
+        # an existing database can fail on foreign-key dependencies and leave
+        # a partially restored dataset. The old trader DB must remain intact.
+        scheduler_was_running=bool(docker("--profile","automation","ps","-q","scheduler").stdout.strip())
         docker("--profile","automation","stop","scheduler")
         docker("stop","web")
         docker("up","-d","db")
         docker("exec","-T","db","pg_restore","--list",input_data=dump.read_bytes())
-        # The restore is destructive and intentionally never called automatically.
-        docker("exec","-T","db","pg_restore","--clean","--if-exists","--no-owner","-U","trader","-d","trader",input_data=dump.read_bytes())
+        nonce=secrets.token_hex(3)
+        suffix=datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")+"_"+nonce
+        scratch="trader_restore_"+suffix
+        previous="trader_previous_"+suffix
+        def sql(command,database="postgres"):
+            return docker("exec","-T","db","psql","-v","ON_ERROR_STOP=1",
+                          "-U","trader","-d",database,"-c",command).stdout
+        swapped=False
+        try:
+            sql("CREATE DATABASE "+scratch+" OWNER trader")
+            docker("exec","-T","db","pg_restore","--exit-on-error",
+                   "--no-owner","--no-acl","-U","trader","-d",scratch,
+                   input_data=dump.read_bytes())
+            mode=sql("SELECT value FROM settings WHERE key='paper_only'",scratch).decode()
+            capital=sql("SELECT value FROM settings WHERE key='initial_cash'",scratch).decode()
+            if "true" not in mode or "500" not in capital:
+                raise RuntimeError("Scratch restore is not a valid 500 EUR PAPER account")
+            # End existing database sessions before renaming. Both web and
+            # scheduler have already been stopped.
+            sql("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname='trader' AND pid <> pg_backend_pid()")
+            sql("ALTER DATABASE trader RENAME TO "+previous)
+            try:
+                sql("ALTER DATABASE "+scratch+" RENAME TO trader")
+                swapped=True
+            except Exception:
+                sql("ALTER DATABASE "+previous+" RENAME TO trader")
+                raise
+        except Exception:
+            if not swapped:
+                try:
+                    sql("DROP DATABASE IF EXISTS "+scratch+" WITH (FORCE)")
+                except Exception: pass
+            try:docker("up","-d","web")
+            except Exception:pass
+            if scheduler_was_running:
+                try:docker("--profile","automation","up","-d","scheduler")
+                except Exception:pass
+            raise
         with tarfile.open(folder/"source.tar.gz","r:gz") as tar:
             for member in tar.getmembers():
                 if member.name.startswith("/") or ".." in Path(member.name).parts or not member.isfile():
@@ -61,7 +103,10 @@ def main():
                     import shutil
                     shutil.copyfileobj(src,dst)
         docker("up","-d","web")
+        if scheduler_was_running:
+            docker("--profile","automation","up","-d","scheduler")
         print("Restored database and source from",folder)
+        print("PREVIOUS DATABASE RETAINED:",previous)
         return 0
     except Exception as exc:
         print("RESTORE FAILED:",exc,file=sys.stderr)

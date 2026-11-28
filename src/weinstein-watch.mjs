@@ -1,4 +1,4 @@
-import {aggregateWeeks} from './weinstein.mjs';
+import {aggregateWeeks,completedWeekCutoff} from './weinstein.mjs';
 
 const round1=x=>Math.round(x*10)/10;
 const checkDay=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x+'T12:00:00Z'));
@@ -19,9 +19,7 @@ export function assessWatch(daily,scan,{asOf=new Date().toISOString().slice(0,10
   .sort((a,b)=>a.day.localeCompare(b.day));
  if(!bars.length)return empty;
  const last=bars.at(-1);
- const d=new Date(asOf+'T12:00:00Z');
- d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
- const currentWeek=d.toISOString().slice(0,10);
+ const currentWeek=completedWeekCutoff(asOf);
  const weeks=aggregateWeeks(bars).filter(w=>w.week<currentWeek);
  if(weeks.length<40)return empty;
  const prior=weeks.slice(-26);

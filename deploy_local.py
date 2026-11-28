@@ -131,7 +131,7 @@ def main():
                         print(f"READY: http://localhost:{PORT}  | paper capital: {body.get('initial')} EUR")
                         if os.environ.get("GITHUB_ACTIONS") != "true":
                             docker("--profile","automation","up","-d","scheduler")
-                            print("AUTOMATION: active; Europe/Paris 20:45 EUR, 23:15 USA")
+                            print("AUTOMATION: active; Europe/Paris 20:45 EUR, 23:45 USA")
                         else:
                             print("AUTOMATION: not started inside GitHub CI")
                         return 0

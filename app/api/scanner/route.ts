@@ -1,3 +1,4 @@
+import {parisClock} from '../../../src/market-collection-plan.mjs';
 import {pool} from '../../../lib/db';
 import {scanWeinstein} from '../../../src/weinstein.mjs';
 import {explainSetup} from '../../../src/weinstein-explain.mjs';
@@ -7,21 +8,46 @@ export const dynamic='force-dynamic';
 const BENCHMARK_BY_CURRENCY:Record<string,string>={EUR:'EXSA.DE',USD:'SPY'};
 const EXCLUDED_SYMBOLS=['KESKOBU0126.HE','VSURE.ST','VYLR'];
 const BAR_SQL="SELECT day::text AS day,open::float8 AS open,high::float8 AS high,low::float8 AS low,close::float8 AS close,volume::int AS volume FROM candles WHERE instrument_id=$1 AND day<=CURRENT_DATE ORDER BY day";
+const BATCH_SQL="SELECT instrument_id,day::text AS day,open::float8 AS open,high::float8 AS high,low::float8 AS low,close::float8 AS close,volume::int AS volume FROM candles WHERE instrument_id=ANY($1::bigint[]) AND day<=CURRENT_DATE ORDER BY instrument_id,day";
+const MAX_ASSETS_PER_READ=24; // Limit heap, avoid 1,100 sequential SQL requests.
 
-export async function GET(){
+export async function GET(request?:Request){
  try{
-  const now=new Date(),asOf=now.toISOString().slice(0,10);
-  const all=(await pool.query("SELECT id,symbol,name,currency FROM instruments WHERE currency IN ('EUR','USD') AND NOT (symbol = ANY($1::text[])) ORDER BY symbol",[EXCLUDED_SYMBOLS])).rows;
+  // The complete scanner still covers all stored instruments by default.
+  // PAPER EUR calls scope it to only actionable EUR securities; this does
+  // not alter any Weinstein stage/stop/risk criterion.
+  const currency=request?new URL(request.url).searchParams.get('currency'):null;
+  if(currency!==null&&!['EUR','USD'].includes(currency))
+   return Response.json({error:'Unsupported currency filter'},{status:400});
+  const now=new Date(),asOf=parisClock(now).day;
+  const all=(await pool.query(
+   currency?"SELECT id,symbol,name,currency FROM instruments WHERE currency=$1 AND NOT (symbol = ANY($2::text[])) ORDER BY symbol":
+   "SELECT id,symbol,name,currency FROM instruments WHERE currency IN ('EUR','USD') AND NOT (symbol = ANY($1::text[])) ORDER BY symbol",
+   currency?[currency,EXCLUDED_SYMBOLS]:[EXCLUDED_SYMBOLS])).rows;
   const benchmarks=new Map<string,unknown[]>();
   for(const [currency,symbol] of Object.entries(BENCHMARK_BY_CURRENCY)){
+   if(request&&new URL(request.url).searchParams.get('currency')!==null&&
+      new URL(request.url).searchParams.get('currency')!==currency)continue;
    const reference=all.find(i=>i.symbol===symbol&&i.currency===currency);
    if(!reference)continue;
    benchmarks.set(currency,(await pool.query(BAR_SQL,[reference.id])).rows);
   }
   const results=[];
-  for(const i of all){
-   if(Object.values(BENCHMARK_BY_CURRENCY).includes(i.symbol))continue;
-   const data=(await pool.query(BAR_SQL,[i.id])).rows;
+  const benchmarkSymbols=new Set(Object.values(BENCHMARK_BY_CURRENCY));
+  const target=all.filter(i=>!benchmarkSymbols.has(i.symbol));
+  // At 1,100 instruments one query per ticker would make the scanner
+  // unusable. Read at most 24 assets of OHLCV into memory at once.
+  for(let offset=0;offset<target.length;offset+=MAX_ASSETS_PER_READ){
+   const batch=target.slice(offset,offset+MAX_ASSETS_PER_READ);
+   const candles=(await pool.query(BATCH_SQL,[batch.map(i=>i.id)])).rows;
+   const grouped=new Map<number,typeof candles>();
+   for(const candle of candles){
+    const id=Number(candle.instrument_id);
+    if(!grouped.has(id))grouped.set(id,[]);
+    grouped.get(id)!.push(candle);
+   }
+   for(const i of batch){
+   const data=grouped.get(Number(i.id))??[];
    const last=data.at(-1);
    const benchmark=BENCHMARK_BY_CURRENCY[i.currency];
    const comparison=benchmarks.get(i.currency);
@@ -49,6 +75,7 @@ export async function GET(){
       status==='STALE_DATA'?'Cours du titre périmé':
       status==='NO_BENCHMARK'?'Benchmark absent':'Benchmark périmé']:explain.reasons
    });
+   }
   }
   results.sort((a,b)=>a.stageRank-b.stageRank || b.setupScore-a.setupScore || a.symbol.localeCompare(b.symbol));
   return Response.json({asOf,benchmarkByCurrency:BENCHMARK_BY_CURRENCY,results,

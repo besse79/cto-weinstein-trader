@@ -1,3 +1,4 @@
+import {parisClock} from '../../../src/market-collection-plan.mjs';
 import {pool} from '../../../lib/db';
 import {backtestWeinsteinPortfolio} from '../../../src/weinstein-portfolio.mjs';
 export const dynamic='force-dynamic';
@@ -13,15 +14,29 @@ export async function GET(req:Request){
   if(!bench)return Response.json({error:'EUR benchmark not configured'},{status:409});
   const benchmarkDaily=(await pool.query(SQL,[bench.id])).rows;
   if(benchmarkDaily.length<250)return Response.json({error:'EUR benchmark history insufficient'},{status:409});
-  const now=new Date(),asOf=now.toISOString().slice(0,10);
+  const now=new Date(),asOf=parisClock(now).day;
   const lag=(day:string)=>(now.getTime()-Date.parse(day+'T12:00:00Z'))/86400000;
   if(lag(benchmarkDaily.at(-1).day)>10)
    return Response.json({error:'EUR benchmark stale'},{status:409});
   const stocks=instruments.filter(i=>i.currency==='EUR'&&i.symbol!==bench.symbol);
-  if(stocks.length>150)return Response.json({error:'Portfolio universe exceeds safety limit'},{status:409});
+  if(stocks.length>750)return Response.json({error:'Portfolio universe exceeds safety limit'},{status:409});
+  // Fetch the EUR universe in ONE bounded query, rather than 500+ serial
+  // database round-trips after an index expansion.
+  const candles=stocks.length?(await pool.query(
+   `SELECT instrument_id,day::text AS day,open::float8 AS open,high::float8 AS high,
+     low::float8 AS low,close::float8 AS close,volume::int AS volume
+     FROM candles WHERE instrument_id=ANY($1::bigint[]) AND day<=CURRENT_DATE
+     ORDER BY instrument_id,day`,[stocks.map(i=>i.id)]
+  )).rows:[];
+  const byId=new Map<number,typeof candles>();
+  for(const c of candles){
+   const id=Number(c.instrument_id);
+   if(!byId.has(id))byId.set(id,[]);
+   byId.get(id)!.push(c);
+  }
   const assets=[];
   for(const stock of stocks){
-   const daily=(await pool.query(SQL,[stock.id])).rows;
+   const daily=byId.get(Number(stock.id))??[];
    // Do not reinterpret old stale quotes as a current trading universe.
    if(!daily.length||lag(daily.at(-1).day)>10)continue;
    assets.push({symbol:stock.symbol,currency:'EUR',daily});

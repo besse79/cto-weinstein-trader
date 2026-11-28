@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {aggregateWeeks,scanWeinstein} from '../src/weinstein.mjs';
+import {aggregateWeeks,scanWeinstein,completedWeekCutoff} from '../src/weinstein.mjs';
 function history(n=47,price=(i)=>100+i*.2,volume=(i)=>10000){
  const start=new Date('2025-01-06T12:00:00Z');
  return Array.from({length:n},(_,i)=>{const d=new Date(start);d.setUTCDate(d.getUTCDate()+7*i+4);const c=price(i);return {day:d.toISOString().slice(0,10),open:c,high:c+.3,low:c-.3,close:c,volume:volume(i)}})
@@ -70,4 +70,22 @@ test('stage 1 candidates are excluded without a valid benchmark',()=>{
  const r=scanWeinstein(equity,{asOf:'2027-01-01'});
  assert.notEqual(r.stage,'PHASE1_END');
  assert.equal(r.eligible,false);
+});
+
+test('weekly scan includes the just-completed Friday only on Saturday/Sunday',()=>{
+ assert.equal(completedWeekCutoff('2026-11-13'),'2026-11-09');
+ assert.equal(completedWeekCutoff('2026-11-14'),'2026-11-16');
+ assert.equal(completedWeekCutoff('2026-11-15'),'2026-11-16');
+ assert.equal(completedWeekCutoff('2026-11-16'),'2026-11-16');
+ assert.throws(()=>completedWeekCutoff('2026-11-31'),/Invalid/);
+ const rows=history(47), friday=rows.at(-1).day;
+ const sat=new Date(Date.parse(friday+'T12:00:00Z')+86400000).toISOString().slice(0,10);
+ const sun=new Date(Date.parse(friday+'T12:00:00Z')+2*86400000).toISOString().slice(0,10);
+ const during=scanWeinstein(rows,{asOf:friday,benchmarkDaily:rows});
+ const saturday=scanWeinstein(rows,{asOf:sat,benchmarkDaily:rows});
+ const sunday=scanWeinstein(rows,{asOf:sun,benchmarkDaily:rows});
+ assert.equal(saturday.weeks,during.weeks+1);
+ assert.equal(saturday.asOf,friday);
+ assert.equal(sunday.asOf,friday);
+ assert.equal(saturday.weeks,sunday.weeks);
 });
