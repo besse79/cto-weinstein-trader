@@ -139,3 +139,17 @@ export async function getPreviewBars({enabled=false,localRead,...options}){
     fallbackReason:err.message};
  }
 }
+
+export async function fetchMkdObservations({baseUrl,symbol,mic,start,end,asOf,fetchImpl=fetch,now=Date.now()}){
+ const at=checkAsOf(asOf,now);
+ if(dateDay(start)>dateDay(end)||end>=asOf.slice(0,10))throw new MkdInvalidData('Invalid observation range');
+ const inst=await requestJson(baseUrl,'/v1/instruments',{symbol,mic,as_of:asOf},fetchImpl);
+ if(inst.symbol!==symbol||inst.mic!==mic||!CURRENCY.has(inst.currency))throw new MkdInvalidData('Instrument mismatch');
+ const doc=await requestJson(baseUrl,'/v1/observations/bars',{instrument_id:inst.instrument_id,start,end,as_of:asOf,limit:1000},fetchImpl);
+ if(doc.instrument_id!==inst.instrument_id||doc.paper_eligible!==false||doc.point_in_time_verified!==false||!Array.isArray(doc.items))throw new MkdInvalidData('Observation provenance mismatch');
+ const bars=validateMkdBars({items:doc.items.map(b=>{
+  if(b.quality_status!=='staged_unverified'||utcTime(b.observed_at)>at||b.date>=b.observed_at.slice(0,10))throw new MkdInvalidData('Invalid observation');
+  return {...b,provider:'yahoo',revision:1,published_at:b.observed_at,first_available_at:b.observed_at};
+ })},{currency:inst.currency,asOf,start,end}).map(({publishedAt,firstAvailableAt,revision,...b})=>({...b,observedAt:firstAvailableAt}));
+ return {source:'MKD_OBSERVED',symbol,mic,currency:inst.currency,bars,verified:false,paperEligible:false};
+}
