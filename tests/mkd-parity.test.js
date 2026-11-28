@@ -73,3 +73,12 @@ test('duplicate signal cannot silently overwrite a candidate',()=>{
  const row={symbol:'AC.PA'};
  assert.throws(()=>compareWeinsteinSignals([row,row],[row]),/duplicate/);
 });
+
+test('invalid dates, coerced numbers and blank symbols cannot certify parity',()=>{
+ assert.throws(()=>compareMarketSeries([bar('2026-02-30')],[bar('2026-02-30')]),/Invalid/);
+ const valid=bar('2026-11-13');
+ for(const bad of [{close:'100'},{volume:'10000'}])assert.equal(compareMarketSeries([valid],[{...valid,...bad}]).status,'NO_PARITY');
+ assert.throws(()=>compareWeinsteinSignals([{symbol:' '}],[{symbol:' '}]),/Invalid/);
+ const base={mode:'PAPER_PORTFOLIO_BACKTEST',equityCurve:[],trades:[]};
+ assert.throws(()=>compareBacktestOutputs(base,base),/required/);
+});
