@@ -19,16 +19,17 @@ export function compareMarketSeries(local,mkd,{
   return byDay;
  };
  const w=rows(local),m=rows(mkd);
+ if(!w.size||!m.size)issues.push({type:'EMPTY_SERIES'});
  let verified=0;
  for(const day of new Set([...w.keys(),...m.keys()])){
   const a=w.get(day),b=m.get(day);
   if(!a||!b){issues.push({day,type:!a?'MISSING_W':'MISSING_MKD'});continue}
   for(const field of ['open','high','low','close']){
    const x=Number(a[field]),y=Number(b[field]);
-   if(!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x-y)>priceTolerance)
+   if(a[field]==null||b[field]==null||!Number.isFinite(x)||!Number.isFinite(y)||x<=0||y<=0||Math.abs(x-y)>priceTolerance)
     issues.push({day,type:'PRICE_MISMATCH',field,w:a[field],mkd:b[field]});
   }
-  if(!Number.isSafeInteger(Number(a.volume))||
+  if(a.volume==null||b.volume==null||Number(a.volume)<0||Number(b.volume)<0||!Number.isSafeInteger(Number(a.volume))||
      !Number.isSafeInteger(Number(b.volume))||
      Math.abs(Number(a.volume)-Number(b.volume))>volumeTolerance)
    issues.push({day,type:'VOLUME_MISMATCH',w:a.volume,mkd:b.volume});
@@ -46,9 +47,17 @@ export function compareWeinsteinSignals(w,mkd){
   'stageRank','setupScore','lastCompletedClose','ma30','prevMa30','priorHigh',
   'relativeStrength','volumeRatio','supportCandidate','hasBaseForBreakout',
   'breakout','rising','aboveMa'];
- const bySymbol=xs=>new Map(xs.map(x=>[x.symbol,x]));
+ const bySymbol=xs=>{
+  const result=new Map();
+  for(const x of xs){
+   if(typeof x?.symbol!=='string'||!x.symbol||result.has(x.symbol))throw new Error('Invalid or duplicate signal symbol');
+   result.set(x.symbol,x);
+  }
+  return result;
+ };
  const a=bySymbol(w),b=bySymbol(mkd);
  const differences=[];
+ if(!a.size||!b.size)differences.push({type:'EMPTY_SIGNALS'});
  for(const symbol of new Set([...a.keys(),...b.keys()])){
   const left=a.get(symbol),right=b.get(symbol);
   if(!left||!right){differences.push({symbol,type:'MISSING_SIGNAL'});continue}

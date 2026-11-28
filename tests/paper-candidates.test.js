@@ -90,3 +90,40 @@ test('Friday cannot treat its own still-open ISO week as a completed signal',()=
  assert.equal(summary.eligibleCount,0);
  assert.ok(summary.candidates[0].reasons.includes('SIGNAL_NOT_PREVIOUS_WEEK'));
 });
+
+test('duplicate scanner symbols cannot create duplicate PAPER candidates',()=>{
+ const result=run([make('AC.PA'),make('AC.PA',{id:2})]);
+ assert.equal(result.eligibleCount,0);
+ assert.ok(result.candidates.every(x=>x.reasons.includes('DUPLICATE_OR_INVALID_SYMBOL')));
+ assert.ok(result.candidates.every(x=>x.orderAllowed===false));
+});
+test('invalid ISO calendar dates fail closed',()=>{
+ assert.throws(()=>run([make()],{asOf:'2026-02-30'}),/Invalid/);
+});
+
+test('Thursday signal cannot be certified by Friday quote',()=>{
+ const r=run([make('AC.PA',{asOf:'2026-11-12'})]);
+ assert.equal(r.eligibleCount,0);
+});
+
+test('coercible nonnumeric quote cannot authorize PAPER order',()=>{
+ const r=run([make('AC.PA',{last:{day:friday,close:'100'}})]);
+ assert.equal(r.eligibleCount,0);
+ assert.ok(r.candidates[0].reasons.includes('INVALID_QUOTE_PRICE'));
+});
+
+test('truthy non-boolean eligibility cannot authorize PAPER orders',()=>{
+ for(const eligible of ['false','true',1,{},[]]){
+  const r=run([make('AC.PA',{eligible})]);
+  assert.equal(r.eligibleCount,0);
+  assert.equal(r.candidates[0].orderAllowed,false);
+  assert.ok(r.candidates[0].reasons.includes('NO_CONFIRMED_BREAKOUT'));
+ }
+});
+
+test('missing or malformed holdings cannot authorize PAPER screening',()=>{
+ for(const positions of [undefined,null,{},'[]',[null],[{}],[{symbol:''}],[{symbol:' '}],[{symbol:42}]]){
+  assert.throws(()=>screenPaperCandidates(scan([make()]),{...account,positions},
+   {asOf:monday,benchmarkDay:friday}),/Invalid paper screening input/);
+ }
+});

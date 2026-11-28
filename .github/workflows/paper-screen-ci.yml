@@ -1,0 +1,27 @@
+name: Weinstein PAPER safety
+on:
+  push:
+    paths:
+      - 'src/paper-candidates.mjs'
+      - 'src/paper-risk.mjs'
+      - 'tests/paper-candidates.test.js'
+      - '.github/workflows/paper-screen-ci.yml'
+  pull_request:
+    paths:
+      - 'src/paper-candidates.mjs'
+      - 'src/paper-risk.mjs'
+      - 'tests/paper-candidates.test.js'
+      - '.github/workflows/paper-screen-ci.yml'
+permissions:
+  contents: read
+jobs:
+  paper-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Run complete JavaScript regression suite
+        run: npm test
