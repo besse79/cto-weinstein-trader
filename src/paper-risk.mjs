@@ -13,6 +13,7 @@ export function sizePaperPosition({cash,entry,stop,riskFraction=0.01,maxAllocati
  const byAllocation=Math.floor((cash*maxAllocationFraction-fee)/entry);
  const byCash=Math.floor((cash-fee)/entry);
  const quantity=Math.max(0,Math.min(byRisk,byAllocation,byCash));
+ if(!Number.isSafeInteger(quantity))return {eligible:false,reason:'UNSAFE_QUANTITY'};
  if(quantity<1)return {eligible:false,reason:'INSUFFICIENT_CAPITAL_OR_RISK',riskBudget};
  return {eligible:true,quantity,notional:quantity*entry,initialStop:stop,
   maxPlannedLoss:quantity*perShareRisk+2*fee,riskBudget,

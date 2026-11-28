@@ -28,6 +28,8 @@ services:
       APP_TOKEN: ${APP_TOKEN:?set APP_TOKEN}
       CI: ${CI:-false}
       YAHOO_TEST_BASE_URL: ${YAHOO_TEST_BASE_URL:-}
+      MKD_READ_ONLY_ENABLED: ${MKD_READ_ONLY_ENABLED:-false}
+      MKD_API_URL: ${MKD_API_URL:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
