@@ -1,25 +1,323 @@
-# CTO Weinstein Trader
+# CTO Weinstein Trader — Yahoo Finance / Paper Trading
 
-Application de suivi et simulation de trading fondée sur la méthode de Stan Weinstein.
+Application Next.js et PostgreSQL d'analyse technique selon Stan Weinstein. Portefeuille fictif de **500 €**, aucune connexion bancaire ou ordre réel.
 
-## Périmètre
-- Capital fictif initial : **500 EUR**
-- Portefeuille **CTO** (pas PEA)
-- Interface Next.js / Node.js ; stockage PostgreSQL
-- IBKR : **données de marché en lecture seule** (connecteur à compléter)
-- Ordres **paper locaux uniquement**, aucun passage d'ordre réel
-- Analyse hebdomadaire : MM30, volumes, phases Weinstein et force relative
-- Gestion du risque : stop initial, break-even à +1,5R, trailing à partir de +2R
-- Bloquer toute simulation si données insuffisantes ou périmées
+## Installer et mettre à jour sous WSL
 
-## Gestion du développement
-- `main` : branche de référence
-- `develop` : développement et intégration
-- `feature/*` : fonctionnalités ; contributions via pull requests
-- Aucun secret dans Git. Fichiers `.env`, identifiants IBKR et sauvegardes exclus.
+Prérequis : WSL Ubuntu, Git et Docker Desktop avec intégration WSL.
 
-## État
-Base du projet Git initialisée le 11 novembre 2026. La V0.3 existante est en cours de migration dans le dépôt. Ne pas considérer les mécanismes de stops ou les cotations IBKR comme opérationnels avant tests documentés.
+Sur une installation existante :
+
+```bash
+cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py
+```
+
+URL locale : http://localhost:3010
+
+L'installateur vérifie Docker et la sauvegarde préalable (sources et PostgreSQL), applique les migrations nécessaires, démarre PostgreSQL et Next.js et vérifie le mode paper. Restaurer une sauvegarde via `python3 restore.py <chemin-de-sauvegarde>` (vérification) ; `--apply` est une action destructive avec confirmation explicite.
+
+## Historique de marché — source Yahoo Finance
+
+Le panneau « Trades du matin » propose un **import manuel** de cinq années de données quotidiennes OHLCV pour l'ensemble des six instruments connus, benchmarks inclus :
+
+- Actions EUR : `AC.PA` (Accor), `SU.PA`, `LR.PA`, `SAF.PA`.
+- Benchmark EUR : `EXSA.DE` (ETF STOXX Europe 600 en EUR).
+- Benchmark USD : `SPY` (ETF S&P 500 en USD ; uniquement benchmark).
+
+Pour importer : sélectionner un lot dans « Trades du matin » puis cliquer directement sur **« Importer ce lot Yahoo »**. Aucune saisie de jeton dans le navigateur. L'application conserve l'historique dans PostgreSQL, calcule la moyenne mobile hebdomadaire 30 semaines, le volume et la force relative pour les **semaines clôturées**. Aucune transaction n'est générée par un import.
+
+### Fiabilité et restrictions
+
+- L'endpoint Yahoo Chart est **non officiel**, gratuit dans les conditions où il est accessible, sans garantie ni contrat de service. Yahoo peut renvoyer 401/429, interrompre ou modifier son format.
+- Les conditions générales Yahoo restreignent l'accès automatisé aux données sans autorisation préalable. Il revient à l'utilisateur de vérifier ses droits d'utilisation ; aucun contournement de contrôles, rotation de proxy ou scraping intensif n'est fourni. **L'import manuel reste possible ; un collecteur quotidien facultatif est désormais lancé par le déploiement local via Docker (voir la section « Collecte quotidienne automatisée »).**
+- Une synchronisation de groupe est **atomique** : si un instrument, une devise, une cotation ou une connexion ne passe pas les contrôles, rien n'est écrit. Les métadonnées d'import sont enregistrées dans `market_sync_audit`.
+- Vérification du symbole, de la devise, des dates et des volumes, de la cohérence haut/bas/ouverture/clôture ; exclusion des séances en cours et rejet des historiques périmés de plus de dix jours. Ce contrôle ne garantit pas la justesse économique des cotations.
+- Les données Yahoo ne constituent pas un flux d'exécution de courtier. Les dividendes, ajustements de splits et frais doivent être validés avant un backtest de performance sérieux.
+- En cas d'indisponibilité de Yahoo ou de conditions incompatibles, prévoir un import de fichier ou un fournisseur sous licence. L'architecture PostgreSQL et le scanner restent indépendants du fournisseur.
+
+## Scanner et risque
+
+- Scanner : MM30 hebdomadaire montante ; cassure des 26 semaines précédentes ; volume au moins 1,5× sa moyenne ; force relative positive sur 26 semaines contre le benchmark de même devise.
+- Les signaux restent des **observations**, pas des ordres. Aucune transaction d'achat automatisée.
+- Simulation des stops sur les barres quotidiennes clôturées, y compris gaps et glissement fictif, sans garantie de réalisme des exécutions.
+- Pas de conversion FX pour les titres en USD : pas d'achat paper USD avant implémentation du change. Le capital demeure en EUR et fixé à 500 €.
+
+## Tests
+
+```bash
+npm install
+npm audit --audit-level=high
+npm test
+npm run typecheck
+npm run build
+```
+
+GitHub Actions vérifie également la base PostgreSQL, les transactions paper, les stops, l'installation/restauration Docker et un serveur **Yahoo simulé**, sans solliciter Yahoo pendant les tests.
 
 ## Sécurité
-Ce projet est expérimental et ne passe **aucun ordre réel**. Les résultats paper ne garantissent aucune performance future.
+
+La clé `APP_TOKEN` reste uniquement dans le fichier local `.env`, jamais dans GitHub. Le site est publié sur `127.0.0.1:3010` uniquement. Il n'existe aucune route vers un courtier ni aucun composant d'exécution d'ordres réels. L'application n'envoie pas d'identifiants à Yahoo.
+
+Les anciens endpoints IBKR et leur ordonnanceur ont été retirés du projet.
+
+## Anticipation de la phase 2 : base de phase 1
+
+Le scanner distingue les états calculés **uniquement sur les semaines ISO terminées** :
+
+- **`PHASE1_LATE` / `PHASE1_END`** : base des 16 dernières semaines dont l'amplitude est au plus 30 %, baisse préalable d'au moins 18 % par rapport à un sommet historique de référence, pente MM30 sur six semaines comprise entre -4 % et +4 %, cours au moins égal à 95 % de la MM30, force relative à 26 semaines supérieure ou égale à -5 %, et distance à la résistance de 0 à 10 %. **Veille uniquement, pas d'achat.**
+- **`PHASE1_BASE` / `PHASE1_FORMING`** : mêmes prérequis, distance à la résistance entre 10 et 20 %. Stade préliminaire de veille, pas d'achat.
+- **`PHASE2_BREAKOUT` / `PHASE2_ENTRY`** : clôture hebdomadaire dépassant les sommets des 26 semaines précédentes, cours supérieur à MM30, MM30 montante, volume hebdomadaire au moins 1,5× celui des dix semaines précédentes, force relative positive contre le benchmark de même devise, et base préalable de 12 semaines dont l'amplitude est de 30 % maximum. Signal indicatif, **aucun ordre automatique**.
+- **`WATCH`** : autres profils non classés ; ne pas confondre une consolidation en phase 3 avec une base de phase 1.
+
+Ces paramètres sont des **heuristiques opérationnelles à backtester**, pas une garantie de conformité à une phase Weinstein. Un `setupScore` de 0 à 100 sert uniquement au classement : il ne représente ni une probabilité de hausse ni une estimation de rendement. Une référence absente ou périmée empêche tout signal exploitable.
+
+Le nombre d'instruments surveillés reste pour l'instant limité aux quatre actions et deux benchmarks importés ; l'élargissement de l'univers devra être traité séparément avec gestion des droits d'accès aux données et de la charge de synchronisation Yahoo.
+
+## Univers élargi de surveillance (novembre 2026)
+
+La migration SQL `003_french_large_caps.sql` ajoute 20 sociétés cotées à Paris à la base des quatre actions initiales, pour **24 actions en EUR et deux benchmarks** (EXSA.DE en EUR, SPY en USD). Les mnémoniques proviennent d'une sélection de sociétés du SBF 120 publiées par Euronext ; **ce n'est pas la composition exhaustive du CAC 40 ni du SBF 120**. La composition des indices peut évoluer.
+
+- `GET /api/universe` affiche les instruments déjà enregistrés, le nombre de bougies et la date du dernier cours, groupés en lots de six maximum.
+- Dans l'interface, l'utilisateur sélectionne **un lot**, puis déclenche explicitement son import Yahoo. L'ancien appel `{ "all": true }` reste compatible mais importe **uniquement les six instruments initiaux**. Les nouveaux appels utilisent `{ "symbols": ["AI.PA", "AIR.PA"] }` avec de un à six symboles distincts présents en base.
+- Chaque lot est atomique : symbole, devise ou prix invalide => aucune bougie de ce lot n'est écrite. Aucun contournement des restrictions Yahoo et aucun transfert d'ordre ; un collecteur de clôtures quotidien borné est décrit plus bas.
+- Le scanner comporte trois listes : **cassures de phase 2**, **bases de fin de phase 1**, **rejets / données absentes**. Chaque rejet décrit les critères manquants.
+- Une cassure confirmée mais située à plus de **20 % au-dessus de la MM30** est classée `PHASE2_EXTENDED`, et n'est **pas éligible** au signal d'entrée initial. Ce seuil conservateur est heuristique et doit être backtesté.
+- Les titres qui ne sont pas encore importés restent `NO_DATA` et ne peuvent pas générer d'achats.
+
+**Périmètre des tests :** API Yahoo simulée, import réel initial de six titres confirmé par l'utilisateur, mais la disponibilité des nouveaux symboles n'a pas encore été testée sur son WSL. Une place de cotation ou une devise incompatible bloque l'import concerné sans donner de faux signal.
+
+La sauvegarde vérifiée des sources et de PostgreSQL est exécutée par `deploy_local.py` **avant** la migration 003. Les données historiques déjà présentes restent en place.
+
+## Surveillance anticipée V2 : cassure quotidienne non confirmée
+
+Le scanner conserve deux lectures entièrement séparées :
+
+1. **Phase Weinstein confirmée** : les critères restent calculés uniquement sur les semaines ISO **terminées**. Un cours quotidien postérieur à la dernière semaine close ne peut jamais rendre un achat fictif éligible.
+2. **Score de veille quotidien** : note explicative 0 à 100, indépendante de la phase et **sans valeur de probabilité de gain**. Elle additionne des composantes plafonnées : proximité de résistance 26 semaines (30), cours supérieur à la MM30 (20), MM30 haussière (15), force relative (15), volume de la **dernière semaine terminée** (10), base préalable (10).
+
+Le statut `PROVISIONAL_BREAKOUT` apparaît uniquement si un **cours quotidien clôturé dans la semaine encore en cours** dépasse le plus haut des 26 **semaines antérieures entièrement terminées**. Cette détection ne valide aucune phase 2 et n'autorise aucun achat. `NEAR_RESISTANCE` signale un cours situé à 10 % ou moins sous la résistance.
+
+La page du scanner s'ouvre sur les **cinq meilleures configurations disposant de données fraîches** (tri par score de veille). Des onglets séparent les entrées phase 2, bases de phase 1, autres profils et **données absentes/périmées**. Aucune valeur sans historique suffisant ou benchmark valable n'obtient de score de veille.
+
+La fiche détaillée peut afficher une marque distincte du dernier cours quotidien et de la résistance de veille, **sans incorporer cette séance à la courbe des semaines closes**. La cotation n'est pas garantie comme temps réel : elle dépend du dernier import Yahoo, manuel ou programmé. Collecte EOD quotidienne disponible lorsque Docker fonctionne, aucun ordre réel, capital paper 500 EUR conservé.
+
+## V3 — Reconstitution historique des phases Weinstein
+
+La fiche individuelle restitue une **estimation heuristique**, semaine par semaine, des phases :
+- **Phase 1** : base contenue, MM30 stabilisée après un repli, force relative suffisamment soutenue.
+- **Phase 2** : cassure sur une clôture hebdomadaire avec volume, force relative et base suffisants ; prolongation de la tendance tant que les contrôles restent cohérents.
+- **Phase 3** : consolidation et ralentissement de MM30 après une phase 2 identifiée.
+- **Phase 4** : cours sous la MM30 avec pente négative.
+- **Non classée** : données insuffisantes, benchmark manquant ou configuration ambiguë.
+
+Chaque étape utilise uniquement les bougies et références **disponibles jusqu'à sa clôture hebdomadaire** (pas d'anticipation de données). La frise colore les intervalles sur le graphique des prix et montre les points de cassure confirmée. Les transitions précédentes sont consultables sous le graphique.
+
+Un tableau descriptif affiche, pour chaque cassure historiquement détectée, les rendements bruts de l'action après **4, 8 et 12 semaines**, uniquement si l'horizon est entièrement observé. Il ne s'agit **pas d'un backtest de portefeuille** : absence de frais et slippage, ajustements splits/dividendes non vérifiés, biais de survivance de l'univers actuel, absence de conversion FX, et aucun modèle de passage d'ordres. Le taux positif et le rendement moyen ne prédisent aucun résultat futur.
+
+La nouvelle fonctionnalité est **en lecture seule**, calculée depuis les historiques PostgreSQL existants. Aucun nouvel accès Yahoo, aucune migration de données, aucune commande de courtier, et le portefeuille demeure fictif à **500 €**.
+
+Commande WSL après CI verte : `cd ~/cto-weinstein-trader && git pull --ff-only origin develop && python3 deploy_local.py`.
+
+## V4 — lot 1 : risque et simulation de performance Weinstein
+
+La branche `feature/weinstein-v4-integrated` poursuit le développement commencé dans l'autre discussion, sans modifier `develop` avant validation.
+
+- Position fictive : capital de départ **500 €**, risque théorique **1 %** par entrée, exposition maximum **25 %** par action et taille entière d'actions ; calcul existant `src/paper-risk.mjs`, conservé.
+- Événement historique : uniquement cassure de phase 2 sur une clôture hebdomadaire **déjà terminée**, avec données de benchmark disponibles à cette date.
+- Exécution fictive : **au plus tôt à l'ouverture de la semaine suivante** ; stop pris sur les huit semaines terminées à la date du signal ; simulation de stop et de gap d'ouverture, commission fixe fictive de 0,50 € par côté, glissement simulé de 0,1 %.
+- Horizon : **4, 8, 12 ou 26 semaines**. Si aucune sortie historique ne peut être observée, la transaction n'est pas intégrée aux résultats. Les opérations par action sont séquentielles, sans chevauchement.
+- API lecture seule `GET /api/instrument/AC.PA/backtest?weeks=12`, intégrée à la fiche action. Aucun ordre fictif persistant n'est émis. Les titres USD sont **bloqués** tant que la conversion historique EUR/USD n'est pas implémentée.
+- Indicateurs : capital fictif final, performance, transactions terminées, taux de transactions positives, recul maximum calculé sur **l'équité réalisée uniquement** (qui sous-estime potentiellement le drawdown intraposition), journal de transactions et signaux sautés.
+
+**Limites importantes :** ce lot simule **une seule action à la fois**, et non encore le portefeuille multi-actifs de 24 valeurs. Commissions et slippage sont simplifiés. Historique Yahoo non corrigé/validé des dividendes et splits, univers courant soumis au biais de survivance, aucun change historique. Il ne faut pas traiter ses performances comme une validation de rentabilité ni comme des recommandations d'achat.
+
+### Limites entre V4 et V5
+
+**Reste en V4 :** consolidation des signaux et du score multi-titres, véritable backtest chronologique d'un portefeuille à plusieurs positions avec capital partagé, gestion des stops et frais, tests de robustesse de données et rapport de performance multi-actifs avant promotion de la version.
+
+**V5 seulement :** comparaison structurée et hors échantillon de Weinstein contre **Minervini/SEPA**, **CAN SLIM**, analyse sectorielle et **Price Action** ; Trend Following incorporé comme famille, RSI/MACD indicateurs auxiliaires, SMC/ICT écarté et approche Value distincte. Comparaison après frais et prise en compte des biais de sélection.
+
+Cette version reste strictement **PAPER ONLY**, sans IBKR ni ordre réel.
+
+## V4 finale — portefeuille multi-actions fictif partagé
+
+La V4 ajoute **un seul capital fictif de 500 € partagé par toutes les actions françaises EUR actuellement importées**, sans dupliquer les 500 € pour chaque titre. Accessible dans l'onglet **« 03 · Backtest V4 »**, cette simulation est indépendante des ordres fictifs enregistrés dans le portefeuille opérationnel et ne modifie jamais les tables de trading.
+
+- **Signaux chronologiques** : cassure Weinstein validée à la clôture d'une semaine, classement déterministe par force relative et volume connus à cette date, puis entrée uniquement à l'ouverture de la semaine calendaire suivante si une bougie existe.
+- **Gestion du capital** : maximum quatre positions longues simultanées, disponibilité de trésorerie non négative, limite de 25 % de liquidités disponibles et risque théorique de 1 % des liquidités disponibles au moment de l'entrée. Ces limites peuvent réduire l'exposition effective, notamment avec seulement 500 € et des actions non fractionnables.
+- **Exécution fictive** : frais forfaitaires de 0,50 € à chaque achat/vente, glissement 0,1 %, stop défini avec les huit semaines précédentes, sauts sous le stop exécutés au prix d'ouverture, sortie sinon au stop ou après 4/8/12/26 semaines. Les calculs utilisent des bougies hebdomadaires, pas un carnet d'ordres réel.
+- **Performance consolidée** : courbe d'équité marquée aux cours de clôture chaque semaine, drawdown maximum sur cette équité (positions ouvertes incluses), opérations, signalements refusés et nombre de positions ouvertes.
+- **Contrôle chronologique** : vue descriptive en trois périodes fixes, 60 % / 20 % / 20 % de l'historique. Ces périodes ne constituent **pas** un test hors échantillon optimisé.
+- **Données manquantes** : simulation bloquée si une position ouverte traverse une semaine dépourvue de bougie ; jamais de prix de vente inventé.
+- **Périmètre** : uniquement titres EUR pour éviter un change USD/EUR non implémenté. Les titres absents ou périmés sont exclus ; un benchmark EUR disponible et frais est obligatoire.
+
+**Important** : la V4 est une simulation chronologique techniquement testée, **pas une preuve statistique de rentabilité**. Les prix Yahoo (source non officielle) et leurs ajustements splits/dividendes n'ont pas été vérifiés indépendamment. L'univers de titres actuel implique un biais de survivance, et l'ordre d'exécution intrase semaine reste approximatif en OHLC. Le backtest de portefeuille n'envoie aucun ordre, fictif persistant ou réel.
+
+**V5 :** seulement après cette base, comparaison de Minervini/SEPA, CAN SLIM, force sectorielle et Price Action à Weinstein avec protocoles comparables et critères de validation hors échantillon.
+
+## Interface locale sans saisie de jeton
+
+L'application est liée par Docker à **127.0.0.1:3010** uniquement. Une action explicite du navigateur (import Yahoo ou vente fictive) est transmise à `POST /api/local-actions`. Ce point d'entrée vérifie que l'hôte est exactement `localhost:3010` ou `127.0.0.1:3010`, que l'en-tête `Origin` correspond exactement à cet hôte, et rejette les appels intersites. Le secret `APP_TOKEN` est lu côté serveur dans `.env` et utilisé uniquement pour déléguer aux endpoints déjà protégés ; il n'est jamais injecté dans du JavaScript navigateur ni retourné dans la réponse HTTP.
+
+Les endpoints `POST /api/orders` et `POST /api/market/sync` **conservent leur contrôle d'authentification**. Le nouveau point d'entrée n'autorise que `sync` (import manuel d'une liste existante de maximum six symboles) et `sell` (vente PAPER). L'enregistrement d'un nouvel achat ne passe pas par ce point d'entrée.
+
+**Portée de sécurité** : cette configuration est prévue pour **un poste utilisateur de confiance**, non pour un serveur partagé. Toute application ou utilisateur ayant un accès local direct au port peut tenter d'agir ; le mécanisme empêche surtout les appels de pages externes et le transport du secret vers le navigateur. Ne pas publier le port Docker sur `0.0.0.0`, ni exposer l'application par reverse proxy sans authentification supplémentaire. L'import reste manuel, sans programmation.
+
+## Préparation des achats PAPER — lundi 16 novembre 2026
+
+La page « 01 · Trades du matin » affiche une sélection **quotidienne** des actions EUR disposant d'un **signal phase 2 confirmé pendant la dernière semaine ISO clôturée**. Une action phase 1, un mouvement provisoire ou une ancienne cassure ne constitue pas un candidat à l'achat.
+
+Le tableau indique le dernier cours journalier clôturé enregistré, sa date, le support servant de stop initial, la quantité entière autorisée (risque théorique maximum 1 % des liquidités disponibles, allocation maximum 25 % des liquidités disponibles, frais simulés de 0,50 € à l'achat et à la vente), et les raisons de chaque exclusion. Maximum quatre positions distinctes ; pas de nouvel achat d'une action déjà détenue.
+
+Un utilisateur peut sélectionner un lot ou déclencher **l'import manuel de tous les lots** ; chaque requête reste explicitement initiée depuis le navigateur, sans ordonnanceur ni contournement des conditions Yahoo. Le référentiel actuel contient 24 actions EUR et deux benchmarks : **l'élargissement US et la collecte automatique ne sont pas livrés dans cette étape**.
+
+**L'ordre n'est jamais automatique** : le bouton « Acheter fictivement » demande une confirmation explicite. Le serveur revalide l'éligibilité du candidat, le cours et la quantité ; le moteur d'ordres PAPER recontrôle le risque, les liquidités et les doublons au sein d'une transaction. Une position simulée est ensuite visible dans l'onglet « 02 · Portefeuille ». Le prix utilisé est **la dernière clôture quotidienne importée**, pas le prix réel d'ouverture du lundi ni un flux temps réel. Un stop ne garantit pas une perte limitée à 1 % en présence d'un gap.
+
+En l'absence d'un candidat valable, aucun ordre n'est créé. L'API `GET /api/paper-candidates` est en lecture seule. `POST /api/paper-entry` est authentifié côté serveur et `POST /api/local-actions` n'expose qu'une action `buy` locale avec revalidation complète et protection Origin. Aucune route d'achat réel ni connexion courtier n'existe.
+
+**Lundi :** lancer l'application, importer les lots Yahoo nécessaires, actualiser l'analyse et valider éventuellement une transaction fictive. La collecte reste manuelle et la recette WSL sur les cours réels n'est pas attestée par la CI, qui utilise des données Yahoo simulées.
+
+## Collecte quotidienne automatisée — stockage PostgreSQL
+
+Le conteneur Docker `scheduler` est installé automatiquement par `deploy_local.py` **sur WSL local**, après la sauvegarde vérifiée de la base, la migration idempotente `004_market_collection.sql` et le démarrage de l'application. Aucun cron système ni `APP_TOKEN` à saisir. Le collecteur n'est **pas** lancé dans GitHub Actions ni dans les commandes Docker sans le profil `automation`.
+
+Fonctionnement :
+- **Démarrage** : lecture du référentiel PostgreSQL, récupération progressive des historiques manquants/insuffisants (moins de 250 séances) sur une fenêtre de cinq ans, et rattrapage des titres dont la dernière séance est ancienne. Sans réimporter ceux déjà complets et récents.
+- **Lundi à vendredi 20 h 45, heure de Paris** : mise à jour des actions EUR et benchmark `EXSA.DE`.
+- **Lundi à vendredi 23 h 15, heure de Paris** : mise à jour du benchmark US `SPY` et des futurs titres USD enregistrés.
+- **Incrémental** : fenêtre glissante de trois mois pour les titres ayant déjà un historique de 250 séances ou plus, insertion/mise à jour sans doublons dans `candles`. Un premier import utilise cinq ans ; les prix déjà acquis restent conservés.
+- **Protection des appels** : lots de six au maximum, un seul collecteur à la fois (verrou PostgreSQL), maximum 120 symboles par exécution et rotation des valeurs secondaires si un univers futur dépasse cette limite ; jamais de requêtes à fréquence intraday. Jusqu'à trois essais espacés d'une heure pour un traitement en échec.
+- **Traçabilité** : `market_job_runs` conserve les dates, états, nombres de réussites/échecs et erreurs ; l'interface « Trades du matin » montre la couverture et les cinq derniers traitements.
+- **Robustesse** : chaque lot est atomique, un lot échoué n'efface jamais les historiques précédents. Les erreurs et rejets de qualité sont visibles. Les autres lots peuvent être traités, sauf limitation explicite par le fournisseur.
+
+**Attention :** la collecte utilise ici l'adaptateur Yahoo Finance gratuit déjà présent, **non officiel**, sans SLA ni garantie de droit de collecte automatisée. Le fonctionnement doit rester conforme aux conditions applicables au compte et aux données ; désactiver le conteneur si le fournisseur interdit cet usage ou renvoie un refus. Une API FMP gratuite peut être intégrée ultérieurement après vérification des instruments et de la licence, sans changement du stockage. La collecte quotidienne n'est pas une autorisation de trading et n'exécute **aucun** achat ou vente.
+
+**Disponibilité** : Docker Desktop et WSL doivent être démarrés aux heures prévues. Le conteneur redémarre automatiquement avec Docker ; si le poste était éteint, il tente de rattraper les historiques absents ou périmés lors de son retour, mais ne promet pas des données non disponibles chez la source.
+
+**Commandes de diagnostic (optionnelles)** :
+```bash
+docker compose -p cto_weinstein --profile automation ps
+docker compose -p cto_weinstein --profile automation logs --tail=80 scheduler
+```
+Arrêt volontaire : `docker compose -p cto_weinstein --profile automation stop scheduler`. Un redéploiement normal réactive la collecte. L'API de statut en lecture seule est `GET /api/market/collection-status`.
+
+
+## V4.1 — Référentiel S&P 500 / STOXX Europe 600 (branche de recette)
+
+**État : préparé pour les imports de compositions, pas encore peuplé.** Les 26 instruments existants ne deviennent pas automatiquement 1 100 instruments. Les deux ETF `SPY` et `EXSA.DE` restent des benchmarks, pas des listes de constituants. Ne pas fusionner ni déployer cette branche avant CI et validation de la provenance.
+
+### Import d'un instantané de constituants
+
+L'importeur `scripts/import_index_universe.py` accepte un fichier CSV provenant d'une source autorisée, vérifiée et datée. Aucune liste n'est embarquée ni obtenue via un scraper non autorisé. Le format est :
+
+```csv
+index_code,symbol,name,currency
+SP500,AAPL,Apple,USD
+STOXX600,AZN.L,AstraZeneca,GBP
+```
+
+Ces **deux lignes ne sont que des exemples de format**, pas la composition officielle complète.
+
+Pour prévisualiser sans toucher aux bases :
+
+```bash
+python3 scripts/import_index_universe.py /chemin/autorise/constituants.csv --as-of 2026-11-14 --source "Index provider - snapshot 2026-11-14"
+```
+
+Pour appliquer, ajouter `--apply` à **cette même commande** seulement après revue de la source et confirmation des droits d'utilisation. Sans `--allow-partial`, l'import refuse les fichiers ayant moins de 490 lignes SP500 ou 590 lignes STOXX600 ; ce sont des seuils de complétude minimale, **pas une validation d'appartenance officielle**. Pour un sous-ensemble intentionnel, utiliser explicitement `--allow-partial`. Le SHA256 du CSV est journalisé et inclus dans la provenance de chaque observation. L'importeur fait une sauvegarde préalable vérifiée des sources et de PostgreSQL et insère les nouveaux instruments et observations de composition datées dans une transaction. Aucun titre existant n'est effacé ; aucun ordre n'est passé. Une nouvelle composition doit être importée avec une nouvelle date d'observation. Une observation n'établit pas une appartenance historique avant sa date. Le fichier doit employer les **tickers reconnus par le fournisseur de cotations**, qui peuvent différer des codes officiels de l'indice.
+
+L'importeur admet les devises USD, EUR, GBP, CHF, SEK, DKK, NOK et PLN. Le scheduler importe leurs données quotidiennes, mais **les signaux et achats PAPER multidevises ne sont pas validés** : benchmark de même devise, FX, frais et ajustements de split/dividende doivent être fiabilisés séparément. L'intégralité de la composition des deux indices et ses droits de redistribution restent à obtenir et vérifier.
+
+### Collecte progressive sur univers étendu
+
+La V4.1 corrige la rotation du scheduler pour avancer de **120 instruments par traitement** (hors places réservées aux benchmarks) et non d'un seul symbole à la fois. La fenêtre de rattrapage continue à fonctionner sans suppression de l'historique déjà acquis ; `market_job_runs` et `/api/market/collection-status` servent à contrôler la progression. La limite de 120 est volontaire : **1 100 titres ne sont pas rafraîchis chaque jour** à ce plafond, et l'import initial prend plusieurs cycles. Ne pas promettre une fraîcheur quotidienne de tout l'univers avec une source gratuite non contractuelle. Adapter la collecte par fournisseur autorisé et quota, puis mesurer la couverture avant tout entraînement du modèle.
+
+La V4.1 constitue le **socle de données**, pas encore un modèle ML entraîné. Avant l'entraînement V5, il faut contrôler les actions sorties des indices (biais de survivance), les données ajustées, la continuité des historiques et les partages chronologiques sans fuite de futur.
+
+### Suivi objectif de couverture V4.1
+
+Une fois l'import de la composition effectué, consulter `GET /api/market/universe-coverage` pour connaître par indice la date de l'instantané, le nombre de lignes, la couverture à 250 et 750 séances, la fraîcheur des clôtures et la répartition des devises. Avant tout import, cet endpoint retourne `NOT_IMPORTED`. Cette API ne prétend pas vérifier les droits sur les fichiers ni l'historique des entrées/sorties d'indice.
+
+Sources de composition à vérifier avant l'import : les publications et fichiers sous licence de STOXX (https://stoxx.com/index/SXXP/) et les données S&P Dow Jones (https://www.spglobal.com/spdji/en/indices/equity/sp-500/). Les dépôts publics contenant des instantanés S&P 500 peuvent servir à recouper des tickers mais ne constituent pas une preuve de licence ou d'appartenance officielle. Ne jamais déduire les composants du STOXX Europe 600 de l'unique ETF benchmark EXSA.DE.
+
+### Prévisualisation automatisée des composants S&P 500
+
+Le script `scripts/fetch_sp500_preview.py` télécharge **uniquement** le fichier public de la liste américaine depuis `chinobing/historical_sp500_constituents`, en limitant la réponse à 250 ko. Il vérifie le format, le nombre de lignes et la **date exacte** indiquée sur chaque ligne avant de créer un instantané normalisé utilisable par le validateur V4.1. Il n'installe rien, ne touche pas à PostgreSQL et ne peut pas importer une composition dont la date diffère. Il faut utiliser la date réellement publiée par la source (elle peut changer chaque jour).
+
+```bash
+python3 scripts/fetch_sp500_preview.py /tmp/weinstein-sp500-preview.csv --as-of 2026-11-14
+```
+
+Cette liste GitHub est un **instantané tiers, non une liste officielle ni une preuve de licence**. Ne pas l'appliquer directement à la base tant qu'il n'est pas vérifié auprès de S&P et que les droits d'utilisation ne sont pas établis. Les symboles avec points sont convertis en tirets pour l'adaptateur Yahoo ; leur validité doit être contrôlée auprès du fournisseur.
+
+La disponibilité des 600 composants européens reste bloquée par une source de composition exploitable et autorisée. La V4.1 ne prétend pas avoir chargé les 1 100 titres.
+
+## Critères de clôture V4 avant V5
+
+Le contrôle de recette `python3 scripts/v4_release_gate.py` interroge **uniquement en lecture** les API locales `127.0.0.1:3010`. Il vérifie : statut PAPER, capital initial 500 EUR, couverture historique des instruments existants, existence d'une collecte réussie, cohérence des candidats et disponibilité du backtest multi-actifs. Il renvoie `BLOCKED` (code 1) en cas d'échec ; `MANUAL_PAPER_REVIEW` (code 0) n'est **pas** une certification de performance ou de données licenciées. Ne jamais exécuter des ordres réels.
+
+Clôturer V4 seulement après une recette WSL des cotations et signaux réels, du scheduler sur une clôture européenne et américaine, du contrôle des stops et des sauvegardes/restaurations. La suite V4.1 élargit le référentiel mais ne change pas les contraintes de simulation : EUR uniquement et maximum 750 titres pour le backtest partagé existant. Un univers étendu sera **bloqué** sur ce backtest tant que la montée en charge et les benchmarks/FX ne seront pas revus. La V5 ne doit démarrer qu'après ces contrôles documentés.
+
+## Revue Weinstein le week-end (V4.1)
+
+- **Lundi à vendredi, 20:45 Europe/Paris** : import EUR/GBP/CHF et autres devises européennes, après leur clôture.
+- **Lundi à vendredi, 23:45 Europe/Paris** : import US, après clôture américaine et délai de consolidation des cours.
+- **Samedi et dimanche** : consulter dans l'interface le scanner et « Paris fictifs ». Les signaux utilisent la semaine ISO **achevée le vendredi** ; ils sont donc examinables le samedi, **pas pendant la séance du vendredi**.
+- **Lundi avant l'ouverture** : vérifier les conditions d'entrée et la trésorerie PAPER. Pas de passage d'ordre automatique.
+
+Correctif de qualité : le lecteur Yahoo excluait auparavant systématiquement la bougie de la journée, y compris après la clôture. V4.1 accepte désormais une bougie du même jour seulement après un délai de sécurité défini par le fuseau reconnu de la place, avec tests Paris/New York et conservation de l'exclusion intraday. Les fuseaux non reconnus restent bloqués pour les bougies du jour. Une collecte « SUCCESS » ne prouve pas nécessairement la présence de la bougie du vendredi : vérifier aussi les dates par symbole et par benchmark dans les diagnostics.
+
+**Important** : ce changement est présent uniquement sur la branche de recette jusqu'au déploiement explicite. L'installation V4 actuelle continue à utiliser ses horaires et règles précédents. Le moteur Docker doit rester actif pour que la collecte ait lieu.
+
+## V4.1 — Précontrôle automatique des 1 100 valeurs avant import
+
+`python3 scripts/v4_1_universe_preflight.py` récupère **une seule fois**, sur demande, les deux sources de recherche :
+
+1. Instantané public daté des 503 titres du S&P 500 (dépôt tiers `chinobing/historical_sp500_constituents`, initialement dérivé de Wikipédia). Vérification d'une date unique, récente et non future, du nombre de titres, de la syntaxe et des doublons.
+2. Positions du fonds iShares EXSA (source BlackRock officielle), **PROXY** de l'indice STOXX Europe 600, **pas** une composition officielle. Vérification de la date effective, de l'exclusion des liquidités/dérivés, des places de cotation et des devises. Toute correspondance Yahoo non résolue bloque l'instantané : aucune valeur artificielle.
+
+Le rapport inclut le nombre d'instruments, les dates et les SHA256. Les CSV sont conservés sous `~/cto-weinstein-previews/<timestamp>/`, sans modifier Git, PostgreSQL, le portefeuille ou les ordres PAPER. L'outil échoue proprement si le fournisseur exige une connexion, change son format ou refuse le téléchargement. L'importeur SQL reconnaît séparément `SP500`, `STOXX600` et `STOXX600_ETF_PROXY`. Un dossier ETF n'est jamais renommé en composition officielle.
+
+Sur un clone de la branche de recette, ce précontrôle est exécutable sans changement applicatif local :
+
+```bash
+cd ~/cto-weinstein-trader && git fetch origin feature/v4-1-universe-collection && dir="$(mktemp -d)" && git archive FETCH_HEAD | tar -xf - -C "$dir" && PYTHONDONTWRITEBYTECODE=1 python3 "$dir/scripts/v4_1_universe_preflight.py"
+```
+
+Une réussite `PREVIEWS_COMPLETE` **n'est pas** un import en base et ne prouve ni les droits sur les composantes de l'indice ni la validité de chaque code Yahoo. Un import réel reste soumis au contrôle de provenance, à une sauvegarde vérifiée et à une recette en copie isolée. Les 503 + environ 600 titres ne constituent pas 1 100 titres rafraîchis le vendredi : le plafond actuel de 120 instrument(s) par collecte ne garantit pas une couverture EOD complète.
+
+### Moteur et affichage sur un univers plus large
+
+- Le backtest partagé EUR passe de 150 à **750 titres maximum**, avec lecture PostgreSQL groupée. C'est une mesure de capacité et non une preuve statistique de rendement.
+- La route `/api/market/universe-coverage` et l'interface affichent par source la couverture des 250+ séances et le nombre de titres dont une clôture du vendredi **est réellement présente**. La revue large est déclarée « prête » uniquement à partir de 95 % de couverture historique et de bougies de vendredi.
+- Les cotations britanniques renvoyées par Yahoo en `GBp` ou `GBX` sont converties en GBP (prix / 100), uniquement pour des instruments `.L` dont la devise référencée est GBP. Les cours restent exclus des achats fictifs tant qu'aucune conversion EUR et aucun benchmark approprié ne sont vérifiés.
+- Les achats PAPER restent fermés le samedi et le dimanche, même quand une configuration hebdomadaire est retenue pour analyse. Une confirmation serveur et le respect des risques restent obligatoires en séance.
+- Des volumes historiques 5 ans, cotes ajustées et composition « point in time » ne sont pas encore tous validés. Ne pas commencer V5 sur une population dont les données ne sont pas complètes et documentées.
+
+### EXSA : remédiation au 404 du 14 novembre 2026
+
+La prévisualisation initiale depuis `.../latest-holdings.csv` renvoie **HTTP 404** pour le produit 251931. Le downloader V4.1 teste désormais, sans contournement et sans réessais agressifs, le fichier iShares historique documenté par tidy-finance (`1478358465952.ajax?fileType=csv&fileName=EXSA_holdings&dataType=fund`), puis la déclinaison suisse autorisée, puis le lien récent. Il accepte uniquement un vrai CSV iShares daté et cohérent. Sur HTTP 401/403/429, il s'arrête immédiatement et signale le refus du fournisseur.
+
+Si les liens directs sont indisponibles, accéder à la page officielle <https://www.ishares.com/de/privatanleger/de/produkte/251931/> et utiliser la commande **Download latest fund holdings CSV data** dans « Positionen » depuis le navigateur. Le fichier d'origine peut être fourni sans le modifier via `--exsa-file /chemin/vers/EXSA_holdings.csv`. Le précontrôle ne modifie pas la base et bloque tout écart de date et symbole. Le fichier local est un instantané des **positions ETF**, pas de l'indice officiel STOXX.
+
+Pour réutiliser les 503 titres S&P déjà validés, utiliser en plus `--sp500-file /home/benoit/cto-weinstein-previews/20261114T172446Z/sp500.csv`. L'empreinte et le rapport antérieur restent la provenance de cet instantané.
+
+Ne pas déployer la branche ni lancer d'apprentissage tant que les 600 composants européens et la correspondance fournisseur ne sont pas validés.
+
+### V4.1 : références complètes vérifiées et mise en base conditionnelle
+
+Le diagnostic GitHub du 14 novembre 2026 a validé, sans import PostgreSQL, un fichier EXSA BlackRock de **602 actions** daté du **12 novembre 2026**, après correction de QIA.DE et VSURE.ST. Le fichier public S&P 500 comporte **503 lignes** datées du **14 novembre 2026**. Total : **1 105 lignes de référence**, qui peuvent comporter des doublons avec les instruments déjà suivis. EXSA = **positions de l'ETF, pas composition officielle de STOXX**. Ne pas confondre ces fichiers avec des données de cours validées.
+
+Le précontrôle `scripts/v4_1_universe_preflight.py` écrit désormais un `manifest.json` dans son dossier horodaté. Exemple sur WSL :
+
+```bash
+python3 scripts/v4_1_universe_preflight.py \
+  --sp500-file "$HOME/cto-weinstein-previews/20261114T172446Z/sp500.csv" \
+  --sp500-as-of 2026-11-14
+```
+
+La sortie `PREVIEWS_COMPLETE` est nécessaire pour passer aux étapes suivantes. La commande `python3 scripts/stage_v4_universe.py /chemin/manifest.json` effectue **uniquement une validation en lecture**, et vérifie les empreintes SHA256, les dates, les comptes exacts et les collisions de devises.
+
+Un import dans la base existante n'est possible **qu'après déploiement sécurisé et recette sur WSL**, en exécutant `stage_v4_universe.py ... --apply --acknowledge-proxy` depuis la véritable installation (avec `.git` et `.env`). Il réalise une sauvegarde source+PostgreSQL vérifiée et insère les deux compositions en **une seule transaction**. Il ne récupère pas les 5 ans de cours, ne passe aucun ordre PAPER et n'autorise aucune transaction réelle. Tant que les cours ne sont pas chargés et contrôlés, aucun indice étendu n'est prêt à être analysé.
+
+**Ne pas déclencher l'import à partir d'une copie temporaire créée avec `git archive`** : la sauvegarde doit pointer sur l'application installée.

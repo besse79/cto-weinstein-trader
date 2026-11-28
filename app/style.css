@@ -1,0 +1,31 @@
+:root{color-scheme:dark;font:15px Arial,sans-serif;background:#0b1421;color:#eef3f9}*{box-sizing:border-box}body{margin:0}main{max-width:1200px;margin:auto;padding:28px}header,nav{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}header{border-bottom:1px solid #344154;padding-bottom:18px}nav{justify-content:start;margin:20px 0}button{border:1px solid #40556c;color:inherit;background:#1e3044;border-radius:8px;padding:10px 14px;cursor:pointer}button.active{background:#2664ab}button:disabled{opacity:.4;cursor:default}small,.muted{color:#99aaba}small{display:block;margin-top:4px}.badge{border:1px solid #9d7530;color:#ffdb9a;padding:6px 10px;border-radius:20px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.cards>article,.table{border:1px solid #35465c;background:#142337;border-radius:12px;padding:16px}.table{overflow-x:auto;padding:0;margin-top:20px}table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:13px;border-bottom:1px solid #34475b}input{background:#101c2a;color:#fff;border:1px solid #456078;padding:9px;margin:10px;border-radius:6px}.notice{padding:12px;background:#44382a;margin:15px 0;border-radius:8px}@media(max-width:700px){.cards{grid-template-columns:1fr}}
+
+/* Charted Weinstein instrument details; local SVG rendering, no external chart requests. */
+.instrument-link,.detail-back{color:#a6c8ff;text-decoration:underline;text-underline-offset:3px}
+.instrument-link:hover,.detail-back:hover{color:#e4efff}
+.detail-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.detail-price{text-align:right}.detail-price strong{font-size:1.8rem}
+.detail-verdict{display:flex;flex-wrap:wrap;justify-content:space-between;gap:18px;background:#15263a;border:1px solid #39516c;border-radius:12px;padding:20px;margin:18px 0}
+.detail-verdict h2{margin:6px 0}.detail-score{display:block;font-size:2rem;margin-top:6px}
+.detail-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}
+.detail-metrics article{background:#142337;border:1px solid #35465c;border-radius:10px;padding:15px;min-width:0}
+.detail-metrics strong{display:block;font-size:1.25rem;margin-top:8px}
+.chart-panel,.detail-analysis{border:1px solid #35465c;background:#142337;border-radius:12px;padding:20px;margin:20px 0}
+.chart-toolbar,.chart-volume-heading{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin:12px 0}
+.chart-toolbar button{padding:7px 10px;margin-left:6px}
+.chart-legend{display:flex;flex-wrap:wrap;gap:18px;color:#c1cfe0;margin:14px 0;font-size:.88rem}
+.chart-legend span:before{content:'';display:inline-block;width:20px;border-top:3px solid #9cbbf4;vertical-align:middle;margin-right:7px}
+.chart-legend .legend-ma:before{border-color:#ffc467}
+.chart-legend .legend-resistance:before{border-color:#f19461;border-top-style:dashed}
+.chart-legend .legend-support:before{border-color:#45ba95;border-top-style:dashed}
+.chart-scroll{width:100%;overflow-x:auto}
+.chart-svg{display:block;width:100%;min-width:660px;height:auto;touch-action:pan-y}
+.chart-inspector{display:flex;flex-wrap:wrap;gap:10px 20px;background:#0e1d2f;border:1px solid #314359;padding:12px;border-radius:7px;color:#dbe8f5}
+.chart-volume-heading{margin-top:24px}
+.detail-analysis li{padding:5px 0;color:#dbe8f5}
+.detail-foot{margin:22px 0;line-height:1.5}
+@media(max-width:760px){
+ .detail-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .detail-price{text-align:left}
+}
+@media(max-width:450px){.detail-metrics{grid-template-columns:1fr}}
