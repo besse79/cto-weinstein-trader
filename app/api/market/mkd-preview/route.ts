@@ -1,6 +1,6 @@
 import {NextRequest} from 'next/server';
 import {pool} from '../../../../lib/db';
-import {getPreviewBars,fetchMkdFx,MkdInvalidData,MkdUnavailable} from '../../../../src/mkd-readonly.mjs';
+import {getPreviewBars,fetchMkdObservations,fetchMkdFx,MkdInvalidData,MkdUnavailable} from '../../../../src/mkd-readonly.mjs';
 import {previewUsdPaperSize,valueUsdPaperPosition} from '../../../../src/fx-valuation.mjs';
 export const dynamic='force-dynamic';
 
@@ -35,6 +35,10 @@ export async function GET(req:NextRequest){
    bars:rows,latest:rows.at(-1).day};
  };
  try{
+  if(url.searchParams.get('mode')==='observed'){
+   const observed=await fetchMkdObservations({baseUrl:process.env.MKD_API_URL||'http://127.0.0.1:8100',symbol,mic,start,end,asOf});
+   return Response.json({...observed,mode:'RESEARCH_ONLY',ordersEnabled:false,operationalScanner:'W_LOCAL_UNCHANGED'},{headers:{'Cache-Control':'no-store'}});
+  }
   const result=await getPreviewBars({
    enabled,baseUrl:process.env.MKD_API_URL||'',symbol,mic,start,end,
    asOf,localRead
