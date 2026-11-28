@@ -19,6 +19,7 @@ export function screenPaperCandidates(scanner,dashboard,{
 }={}){
  if(!parseDay(asOf)||!Array.isArray(scanner?.results)||
   !Number.isFinite(dashboard?.cash)||!Number.isFinite(dashboard?.equity)||
+  !Array.isArray(dashboard?.positions)||dashboard.positions.some(p=>!p||typeof p.symbol!=='string'||!p.symbol.trim())||
   !Number.isFinite(fee)||fee<0)throw Error('Invalid paper screening input');
  // A completed Friday can be screened immediately on Saturday/Sunday.
  // On Mon-Fri, use the prior calendar week; the current week is still open
@@ -34,7 +35,7 @@ export function screenPaperCandidates(scanner,dashboard,{
  // Conservative on Friday exchange holidays until a calendar is available.
  const requiredPriorClose=new Date(Date.parse(previousMonday+'T12:00:00Z')+4*86400000)
   .toISOString().slice(0,10);
- const positions=Array.isArray(dashboard.positions)?dashboard.positions:[];
+ const positions=dashboard.positions;
  const held=new Set(positions.map(p=>p.symbol));
  const remainingSlots=Math.max(0,4-positions.length);
  const available=Math.max(0,dashboard.cash);
