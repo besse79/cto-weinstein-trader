@@ -41,3 +41,9 @@ jobs:
           if(!result.bars.length||result.paperEligible!==false||result.currency!==currency)throw Error('MKD client gate failed');
           console.log('MKD_CLIENT_PASS',symbol,day);
           JS
+          node --input-type=module <<'JS'
+          import {fetchMkdObservations} from './src/mkd-readonly.mjs';
+          const [iid,symbol,mic,currency,day]=process.env.SAMPLE.split('|');
+          const result=await fetchMkdObservations({baseUrl:'http://127.0.0.1:8100',symbol,mic,start:day,end:day,asOf:new Date().toISOString()});
+          if(result.verified!==false||result.paperEligible!==false)throw Error('Research isolation failed');
+          JS
