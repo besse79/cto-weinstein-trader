@@ -56,7 +56,7 @@ export function screenPaperCandidates(scanner,dashboard,{
   if(!benchmarkDay||benchmarkDay<requiredPriorClose)reasons.push('PREVIOUS_WEEK_BENCHMARK_INCOMPLETE');
   if(!last||age(last.day)<0||age(last.day)>4)reasons.push('QUOTE_STALE');
   if(!last||last.day<requiredPriorClose)reasons.push('PREVIOUS_WEEK_QUOTE_INCOMPLETE');
-  if(!x.eligible||x.signal!=='PHASE2_BREAKOUT')reasons.push('NO_CONFIRMED_BREAKOUT');
+  if(x.eligible!==true||x.signal!=='PHASE2_BREAKOUT')reasons.push('NO_CONFIRMED_BREAKOUT');
   if(signalWeek!==previousMonday||signalDay!==requiredPriorClose)reasons.push('SIGNAL_NOT_PREVIOUS_WEEK');
   if(held.has(x.symbol))reasons.push('ALREADY_HELD');
   if(remainingSlots<1)reasons.push('MAX_POSITIONS');
