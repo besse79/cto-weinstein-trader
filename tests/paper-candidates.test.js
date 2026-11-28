@@ -120,3 +120,10 @@ test('truthy non-boolean eligibility cannot authorize PAPER orders',()=>{
   assert.ok(r.candidates[0].reasons.includes('NO_CONFIRMED_BREAKOUT'));
  }
 });
+
+test('missing or malformed holdings cannot authorize PAPER screening',()=>{
+ for(const positions of [undefined,null,{},'[]',[null],[{}],[{symbol:''}],[{symbol:' '}],[{symbol:42}]]){
+  assert.throws(()=>screenPaperCandidates(scan([make()]),{...account,positions},
+   {asOf:monday,benchmarkDay:friday}),/Invalid paper screening input/);
+ }
+});
