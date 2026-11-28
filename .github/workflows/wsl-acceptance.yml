@@ -27,3 +27,17 @@ jobs:
           set -euo pipefail
           curl -fsS --max-time 10 http://127.0.0.1:8100/health/live
           PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=15000' psql -X -v ON_ERROR_STOP=1 -h /var/run/postgresql -p 5433 -d market_data_hub -c "SELECT currency, quality_status, count(*) FROM public.eod_bars WHERE currency IN ('EUR','USD') GROUP BY currency, quality_status"
+      - name: Verify actual MKD observation client
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGOPTIONS='-c default_transaction_read_only=on'
+          export SAMPLE=$(psql -XAt -F '|' -h /var/run/postgresql -p 5433 -d market_data_hub -v ON_ERROR_STOP=1 -c "SELECT i.instrument_id,i.symbol,i.mic,i.currency,b.session_date FROM instrument_identifiers i JOIN eod_bars b ON b.instrument_id=i.instrument_id AND b.currency=i.currency WHERE i.provider='yahoo' AND i.valid_to IS NULL AND i.currency IN ('EUR','USD') AND b.provider='yahoo' AND b.quality_status='staged_unverified' AND b.session_date<b.first_available_at::date ORDER BY b.session_date DESC LIMIT 1")
+          test -n "$SAMPLE"
+          node --input-type=module <<'JS'
+          import {fetchMkdObservations} from './src/mkd-readonly.mjs';
+          const [iid,symbol,mic,currency,day]=process.env.SAMPLE.split('|');
+          const result=await fetchMkdObservations({baseUrl:'http://127.0.0.1:8100',symbol,mic,start:day,end:day,asOf:new Date().toISOString()});
+          if(!result.bars.length||result.paperEligible!==false||result.currency!==currency)throw Error('MKD client gate failed');
+          console.log('MKD_CLIENT_PASS',symbol,day);
+          JS
