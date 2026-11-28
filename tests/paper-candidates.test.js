@@ -111,3 +111,12 @@ test('coercible nonnumeric quote cannot authorize PAPER order',()=>{
  assert.equal(r.eligibleCount,0);
  assert.ok(r.candidates[0].reasons.includes('INVALID_QUOTE_PRICE'));
 });
+
+test('truthy non-boolean eligibility cannot authorize PAPER orders',()=>{
+ for(const eligible of ['false','true',1,{},[]]){
+  const r=run([make('AC.PA',{eligible})]);
+  assert.equal(r.eligibleCount,0);
+  assert.equal(r.candidates[0].orderAllowed,false);
+  assert.ok(r.candidates[0].reasons.includes('NO_CONFIRMED_BREAKOUT'));
+ }
+});
